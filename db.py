@@ -105,20 +105,60 @@ def hash_sample_password(password):
 # ============================================================
 # INITIALIZE DATABASE
 # ============================================================
+def repair_sample_student_passwords(connection):
+    """
+    Repair passwords for predefined demo/sample student accounts.
 
+    This does NOT delete students or modify their academic/profile data.
+    """
+
+    sample_accounts = [
+        "rahul.sharma@example.com",
+        "priya.kumar@example.com",
+        "arjun.rao@example.com",
+        "sneha.reddy@example.com",
+        "vivek.kumar@example.com",
+    ]
+
+    cursor = connection.cursor()
+
+    new_password_hash = hash_sample_password("Student@123")
+
+    repaired = 0
+
+    for email in sample_accounts:
+
+        cursor.execute(
+            """
+            SELECT id
+            FROM students
+            WHERE email = ?
+            """,
+            (email,)
+        )
+
+        student = cursor.fetchone()
+
+        if student:
+            cursor.execute(
+                """
+                UPDATE students
+                SET password_hash = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE email = ?
+                """,
+                (new_password_hash, email)
+            )
+
+            repaired += 1
+
+    connection.commit()
+
+    print(f"Sample student passwords repaired: {repaired}")
+
+    return repaired
+    
 def init_db():
-    """
-    Initialize the SQLite database.
-
-    On every application launch:
-
-    1. Create the students table if it does not exist.
-    2. Check whether student data already exists.
-    3. If the table is empty, insert sample students.
-    4. If data already exists, preserve it and do nothing.
-
-    This function is safe to call on every Streamlit launch/rerun.
-    """
 
     connection = get_connection()
 
@@ -126,104 +166,60 @@ def init_db():
 
         cursor = connection.cursor()
 
-        # ====================================================
-        # CREATE STUDENTS TABLE
-        # ====================================================
-
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS students (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 full_name TEXT NOT NULL,
-
                 college_name TEXT NOT NULL,
-
                 degree TEXT NOT NULL,
-
                 branch TEXT NOT NULL,
-
                 tenth_cgpa REAL,
-
                 twelfth_cgpa REAL,
-
                 be_cgpa REAL,
-
                 phone TEXT UNIQUE NOT NULL,
-
                 email TEXT UNIQUE NOT NULL,
-
                 password_hash TEXT NOT NULL,
-
                 email_verified INTEGER DEFAULT 0,
-
                 phone_verified INTEGER DEFAULT 0,
-
                 approval_status TEXT DEFAULT 'PENDING',
-
                 rejection_reason TEXT,
-
-                created_at TIMESTAMP
-                    DEFAULT CURRENT_TIMESTAMP,
-
-                updated_at TIMESTAMP
-                    DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-            """
-        )
+        """)
 
         connection.commit()
 
+        # --------------------------------------------------
+        # Check whether students already exist
+        # --------------------------------------------------
 
-        # ====================================================
-        # CHECK WHETHER DATA ALREADY EXISTS
-        # ====================================================
-
-        cursor.execute(
-            """
-            SELECT COUNT(*)
-            FROM students
-            """
-        )
+        cursor.execute("SELECT COUNT(*) FROM students")
 
         result = cursor.fetchone()
 
         student_count = int(result[0])
 
-
-        # ====================================================
-        # INSERT SAMPLE DATA ONLY IF DATABASE IS EMPTY
-        # ====================================================
-
         if student_count == 0:
 
-            print(
-                "No student data found."
-            )
+            print("No student data found.")
+            print("Adding sample students...")
 
-            print(
-                "Adding sample students..."
-            )
+            insert_sample_students(connection)
 
-            insert_sample_students(
-                connection
-            )
-
-            print(
-                "Sample student data added successfully."
-            )
+            print("Sample student data added successfully.")
 
         else:
 
-            print(
-                f"{student_count} student(s) already exist."
-            )
+            print(f"{student_count} student(s) already exist.")
 
-            print(
-                "Existing student data preserved."
-            )
+            print("Existing student data preserved.")
 
+        # --------------------------------------------------
+        # Repair predefined sample account passwords
+        # --------------------------------------------------
+
+        repair_sample_student_passwords(connection)
 
     finally:
 
