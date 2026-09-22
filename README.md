@@ -102,3 +102,27 @@ You can also run the Streamlit application from Colab using a tunnel such as Clo
 - Use HTTPS for deployed applications.
 - For production, add rate limiting, audit logging, CSRF/session hardening, account lockout, and a persistent OTP/rate-limit store such as Redis.
 - SQLite is appropriate for a learning/small deployment. For multi-user production deployments, PostgreSQL is recommended.
+
+🧪 Recommended Testing
+
+1. Test approved student
+
+Email:    rahul.sharma@example.com
+Password: Student@123
+
+This should allow Student Dashboard access.
+
+2. Test pending student
+
+Email:    priya.kumar@example.com
+Password: Student@123
+
+3. Test rejected student
+
+Email:    arjun.rao@example.com
+Password: Student@123
+
+4. Test unverified email
+
+Email:    vivek.kumar@example.com
+Password: Student@123
