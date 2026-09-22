@@ -406,12 +406,12 @@ with tab_login:
 
                 if not student["email_verified"]:
                     st.error(
-                        "📧 Your email address is not verified."
+                        " Your email address is not verified."
                     )
 
                 elif not student["phone_verified"]:
                     st.error(
-                        "📱 Your phone number is not verified."
+                        " Your phone number is not verified."
                     )
 
                 else:
@@ -424,7 +424,7 @@ with tab_login:
                     )
 
                     st.switch_page(
-                        "pages/1_🎓_Student_Dashboard.py"
+                        "pages/1_Student_Dashboard.py"
                     )
 
             else:
