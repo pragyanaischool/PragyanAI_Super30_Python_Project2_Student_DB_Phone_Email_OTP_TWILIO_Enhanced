@@ -108,76 +108,127 @@ def hash_sample_password(password):
 
 def init_db():
     """
-    Create database and students table.
+    Initialize the SQLite database.
 
-    Sample students are inserted automatically
-    when the database is first created.
+    On every application launch:
+
+    1. Create the students table if it does not exist.
+    2. Check whether student data already exists.
+    3. If the table is empty, insert sample students.
+    4. If data already exists, preserve it and do nothing.
+
+    This function is safe to call on every Streamlit launch/rerun.
     """
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    # --------------------------------------------------------
-    # CREATE STUDENTS TABLE
-    # --------------------------------------------------------
+        cursor = connection.cursor()
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS students (
+        # ====================================================
+        # CREATE STUDENTS TABLE
+        # ====================================================
 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS students (
 
-            full_name TEXT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-            college_name TEXT NOT NULL,
+                full_name TEXT NOT NULL,
 
-            degree TEXT NOT NULL,
+                college_name TEXT NOT NULL,
 
-            branch TEXT NOT NULL,
+                degree TEXT NOT NULL,
 
-            tenth_cgpa REAL,
+                branch TEXT NOT NULL,
 
-            twelfth_cgpa REAL,
+                tenth_cgpa REAL,
 
-            be_cgpa REAL,
+                twelfth_cgpa REAL,
 
-            phone TEXT UNIQUE NOT NULL,
+                be_cgpa REAL,
 
-            email TEXT UNIQUE NOT NULL,
+                phone TEXT UNIQUE NOT NULL,
 
-            password_hash TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
 
-            email_verified INTEGER DEFAULT 0,
+                password_hash TEXT NOT NULL,
 
-            phone_verified INTEGER DEFAULT 0,
+                email_verified INTEGER DEFAULT 0,
 
-            approval_status TEXT DEFAULT 'PENDING',
+                phone_verified INTEGER DEFAULT 0,
 
-            rejection_reason TEXT,
+                approval_status TEXT DEFAULT 'PENDING',
 
-            created_at TIMESTAMP
-                DEFAULT CURRENT_TIMESTAMP,
+                rejection_reason TEXT,
 
-            updated_at TIMESTAMP
-                DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP
+                    DEFAULT CURRENT_TIMESTAMP,
+
+                updated_at TIMESTAMP
+                    DEFAULT CURRENT_TIMESTAMP
+            )
+            """
         )
-        """
-    )
 
-    connection.commit()
-
-    # --------------------------------------------------------
-    # INSERT SAMPLE STUDENTS
-    # --------------------------------------------------------
-
-    insert_sample_students(
-        connection
-    )
-
-    connection.close()
+        connection.commit()
 
 
+        # ====================================================
+        # CHECK WHETHER DATA ALREADY EXISTS
+        # ====================================================
+
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            """
+        )
+
+        result = cursor.fetchone()
+
+        student_count = int(result[0])
+
+
+        # ====================================================
+        # INSERT SAMPLE DATA ONLY IF DATABASE IS EMPTY
+        # ====================================================
+
+        if student_count == 0:
+
+            print(
+                "No student data found."
+            )
+
+            print(
+                "Adding sample students..."
+            )
+
+            insert_sample_students(
+                connection
+            )
+
+            print(
+                "Sample student data added successfully."
+            )
+
+        else:
+
+            print(
+                f"{student_count} student(s) already exist."
+            )
+
+            print(
+                "Existing student data preserved."
+            )
+
+
+    finally:
+
+        connection.close()
+        
 # ============================================================
 # CREATE STUDENT
 # ============================================================
@@ -876,13 +927,9 @@ def student_counts():
 
 def insert_sample_students(connection):
     """
-    Insert sample students for development/testing.
+    Insert sample students only when they do not already exist.
 
-    This function is safe to run multiple times.
-
-    Existing students are NOT deleted or modified.
-    If a sample student's email or phone already exists,
-    that sample record is skipped.
+    Existing student records are never deleted or modified.
     """
 
     sample_students = [
@@ -932,9 +979,7 @@ def insert_sample_students(connection):
             "email_verified": 1,
             "phone_verified": 1,
             "approval_status": "REJECTED",
-            "rejection_reason": (
-                "Academic details require review."
-            ),
+            "rejection_reason": "Academic details require review.",
         },
         {
             "full_name": "Sneha Reddy",
@@ -972,8 +1017,7 @@ def insert_sample_students(connection):
 
     cursor = connection.cursor()
 
-    inserted_count = 0
-    skipped_count = 0
+    inserted = 0
 
     for student in sample_students:
 
@@ -988,16 +1032,11 @@ def insert_sample_students(connection):
             WHERE email = ?
             LIMIT 1
             """,
-            (
-                student["email"],
-            )
+            (student["email"],)
         )
 
-        existing_email = cursor.fetchone()
+        if cursor.fetchone():
 
-        if existing_email:
-
-            skipped_count += 1
             continue
 
 
@@ -1012,21 +1051,16 @@ def insert_sample_students(connection):
             WHERE phone = ?
             LIMIT 1
             """,
-            (
-                student["phone"],
-            )
+            (student["phone"],)
         )
 
-        existing_phone = cursor.fetchone()
+        if cursor.fetchone():
 
-        if existing_phone:
-
-            skipped_count += 1
             continue
 
 
         # ====================================================
-        # HASH SAMPLE PASSWORD
+        # HASH PASSWORD
         # ====================================================
 
         password_hash = hash_sample_password(
@@ -1035,7 +1069,7 @@ def insert_sample_students(connection):
 
 
         # ====================================================
-        # INSERT SAMPLE STUDENT
+        # INSERT
         # ====================================================
 
         cursor.execute(
@@ -1056,7 +1090,10 @@ def insert_sample_students(connection):
                 approval_status,
                 rejection_reason
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?
+            )
             """,
             (
                 student["full_name"],
@@ -1076,24 +1113,12 @@ def insert_sample_students(connection):
             )
         )
 
-        inserted_count += 1
+        inserted += 1
 
-
-    # ========================================================
-    # COMMIT
-    # ========================================================
 
     connection.commit()
 
-
-    # ========================================================
-    # OPTIONAL RETURN INFORMATION
-    # ========================================================
-
-    return {
-        "inserted": inserted_count,
-        "skipped": skipped_count,
-    }
+    return inserted
     
 # ============================================================
 # RESET DATABASE - DEVELOPMENT ONLY
@@ -1123,7 +1148,6 @@ def reset_database():
     connection.close()
 
     init_db()
-
 
 # ============================================================
 # END OF db.py
