@@ -1,275 +1,1226 @@
-import os
-import re
-import time
-from datetime import datetime
+# ============================================================
+# PragyanAI Student Verification System
+# app.py
+# ============================================================
 
-import pandas as pd
 import streamlit as st
 
-from auth import hash_password, verify_password
-from db import init_db, create_student, get_student_by_email, email_or_phone_exists, list_students, set_approval
-from otp_service import generate_otp, send_email_otp, send_phone_otp, verify_phone_otp, otp_is_valid
+from db import (
+    init_db,
+    create_student,
+    get_student_by_email,
+)
 
-st.set_page_config(page_title="PragyanAI Student Verification", page_icon="🎓", layout="wide")
+from auth import (
+    initialize_session_state,
+    student_login,
+    admin_login,
+    set_student_session,
+    set_admin_session,
+    is_logged_in,
+    is_student_logged_in,
+    is_admin_logged_in,
+    logout,
+)
+
+from otp_service import (
+    validate_email,
+    validate_phone,
+    generate_otp,
+    otp_is_valid,
+    send_email_otp,
+    send_phone_otp,
+    verify_phone_otp,
+)
+
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="PragyanAI Student Verification",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# ============================================================
+# INITIALIZE DATABASE & SESSION
+# ============================================================
+
 init_db()
-
-# -------------------------------
-# Configuration
-# -------------------------------
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@pragyanai.com")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "ChangeMe@123")
-
-if "role" not in st.session_state:
-    st.session_state.role = None
-if "student_id" not in st.session_state:
-    st.session_state.student_id = None
-if "email_otp" not in st.session_state:
-    st.session_state.email_otp = None
-if "email_otp_time" not in st.session_state:
-    st.session_state.email_otp_time = None
-if "email_verified" not in st.session_state:
-    st.session_state.email_verified = False
-if "phone_verified" not in st.session_state:
-    st.session_state.phone_verified = False
-if "pending_student" not in st.session_state:
-    st.session_state.pending_student = None
+initialize_session_state()
 
 
-def normalize_phone(phone):
-    return phone.strip().replace(" ", "")
+# ============================================================
+# CUSTOM CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    .main-title {
+        font-size: 2.4rem;
+        font-weight: 700;
+        color: #1f4e79;
+        margin-bottom: 0.2rem;
+    }
+
+    .subtitle {
+        font-size: 1.05rem;
+        color: #666666;
+        margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1f4e79;
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .success-box {
+        padding: 15px;
+        border-radius: 10px;
+        background-color: #e8f5e9;
+        border: 1px solid #81c784;
+        margin: 10px 0;
+    }
+
+    .info-box {
+        padding: 15px;
+        border-radius: 10px;
+        background-color: #e3f2fd;
+        border: 1px solid #64b5f6;
+        margin: 10px 0;
+    }
+
+    .warning-box {
+        padding: 15px;
+        border-radius: 10px;
+        background-color: #fff8e1;
+        border: 1px solid #ffca28;
+        margin: 10px 0;
+    }
+
+    .danger-box {
+        padding: 15px;
+        border-radius: 10px;
+        background-color: #ffebee;
+        border: 1px solid #ef5350;
+        margin: 10px 0;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
-def valid_email(email):
-    return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()))
+# ============================================================
+# SIDEBAR
+# ============================================================
 
-
-def logout():
-    for key in ["role", "student_id", "email_otp", "email_otp_time", "email_verified", "phone_verified", "pending_student"]:
-        st.session_state[key] = None if key in ["role", "student_id", "email_otp", "email_otp_time", "pending_student"] else False
-    st.rerun()
-
-# -------------------------------
-# Sidebar
-# -------------------------------
 with st.sidebar:
-    st.title("🎓 PragyanAI")
-    st.caption("Student Registration & Verification")
-    if st.session_state.role:
-        st.success(f"Logged in as {st.session_state.role.title()}")
-        if st.button("Logout", use_container_width=True):
+
+    st.markdown("##  PragyanAI")
+
+    st.markdown("---")
+
+    if is_student_logged_in():
+
+        st.success(" Student Logged In")
+
+        student_name = st.session_state.get(
+            "student_name",
+            "Student"
+        )
+
+        student_email = st.session_state.get(
+            "student_email",
+            ""
+        )
+
+        st.write(f"**Name:** {student_name}")
+        st.write(f"**Email:** {student_email}")
+
+        st.markdown("---")
+
+        if st.button(
+            " Student Dashboard",
+            use_container_width=True
+        ):
+            st.switch_page(
+                "pages/1_Student_Dashboard.py"
+            )
+
+        if st.button(
+            "🚪 Logout",
+            use_container_width=True
+        ):
             logout()
-
-# -------------------------------
-# Admin Dashboard
-# -------------------------------
-def admin_dashboard():
-    st.title("🛡️ Admin Dashboard")
-    st.write("Review verified student accounts and update approval status.")
-
-    rows = list_students()
-    if not rows:
-        st.info("No student accounts found.")
-        return
-
-    data = [dict(r) for r in rows]
-    df = pd.DataFrame(data)
-    cols = ["id", "full_name", "college_name", "degree", "branch", "tenth_cgpa", "twelfth_cgpa", "be_cgpa", "phone", "email", "email_verified", "phone_verified", "approval_status", "created_at", "approved_by", "approved_at"]
-    st.dataframe(df[cols], use_container_width=True, hide_index=True)
-
-    st.subheader("Update Approval")
-    options = {f"#{r['id']} - {r['full_name']} - {r['email']} [{r['approval_status']}]": r for r in rows}
-    selected = st.selectbox("Select Student", list(options.keys()))
-    row = options[selected]
-
-    st.write({
-        "Email Verified": bool(row["email_verified"]),
-        "Phone Verified": bool(row["phone_verified"]),
-        "Current Status": row["approval_status"],
-    })
-
-    new_status = st.selectbox("Approval Status", ["Pending", "Approved", "Rejected"], index=["Pending", "Approved", "Rejected"].index(row["approval_status"]))
-    if st.button("💾 Update Approval Status", type="primary"):
-        if new_status == "Approved" and not (row["email_verified"] and row["phone_verified"]):
-            st.error("Student must have both Email and Phone verified before approval.")
-        else:
-            set_approval(row["id"], new_status, ADMIN_EMAIL)
-            st.success(f"Student status updated to {new_status}.")
             st.rerun()
 
-# -------------------------------
-# Student Portal
-# -------------------------------
-def student_portal():
-    row = get_student_by_email(st.session_state.student_email)
-    st.title("🎓 Student Portal")
-    if not row:
-        st.error("Student account not found.")
-        return
-    st.success(f"Welcome, {row['full_name']}")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Email", "Verified" if row["email_verified"] else "Not Verified")
-    c2.metric("Phone", "Verified" if row["phone_verified"] else "Not Verified")
-    c3.metric("Approval", row["approval_status"])
-    st.subheader("Profile")
-    st.dataframe(pd.DataFrame([dict(row)]), use_container_width=True, hide_index=True)
+    elif is_admin_logged_in():
 
-# -------------------------------
-# Main Login / Registration
-# -------------------------------
-if st.session_state.role == "admin":
-    admin_dashboard()
-    st.stop()
+        st.success(" Admin Logged In")
 
-if st.session_state.role == "student":
-    student_portal()
-    st.stop()
+        st.markdown("---")
 
-st.title("🎓 PragyanAI Student Account & Verification")
-st.markdown("Create a student account, verify **Email + Phone**, then wait for **Admin Approval**.")
+        if st.button(
+            " Admin Dashboard",
+            use_container_width=True
+        ):
+            st.switch_page(
+                "pages/2_Admin_Dashboard.py"
+            )
 
-login_tab, register_tab, admin_tab = st.tabs(["🔐 Student Login", "📝 Create Student Account", "🛡️ Admin Login"])
-
-with login_tab:
-    st.subheader("Student Login")
-    email = st.text_input("Email", key="login_email")
-    password = st.text_input("Password", type="password", key="login_password")
-    if st.button("Login", type="primary", key="student_login"):
-        row = get_student_by_email(email)
-        if not row or not verify_password(password, row["password_hash"]):
-            st.error("Invalid email or password.")
-        elif not (row["email_verified"] and row["phone_verified"]):
-            st.warning("Please complete both Email and Phone verification.")
-        else:
-            st.session_state.role = "student"
-            st.session_state.student_id = row["id"]
-            st.session_state.student_email = row["email"]
+        if st.button(
+            "🚪 Logout",
+            use_container_width=True
+        ):
+            logout()
             st.rerun()
 
-with register_tab:
-    st.subheader("Create Student Account")
-    with st.form("student_registration"):
-        full_name = st.text_input("Full Name *")
-        college_name = st.text_input("College Name *")
-        degree = st.selectbox("Degree *", ["BE", "BTech", "ME", "MTech", "BCA", "MCA", "Other"])
-        branch = st.text_input("Branch *", placeholder="CSE / AI&ML / ISE / ECE")
-        c1, c2, c3 = st.columns(3)
-        tenth = c1.number_input("10th CGPA *", min_value=0.0, max_value=10.0, step=0.01)
-        twelfth = c2.number_input("12th CGPA *", min_value=0.0, max_value=10.0, step=0.01)
-        be = c3.number_input("BE CGPA *", min_value=0.0, max_value=10.0, step=0.01)
-        phone = st.text_input("Phone *", placeholder="+919876543210")
-        email = st.text_input("Email *", placeholder="student@gmail.com")
-        password = st.text_input("Create Password *", type="password")
-        confirm = st.text_input("Confirm Password *", type="password")
-        submitted = st.form_submit_button("Create Account & Continue to Verification", type="primary")
+    else:
 
-    if submitted:
-        phone = normalize_phone(phone)
-        email = email.strip()
-        errors = []
-        if not all([full_name.strip(), college_name.strip(), branch.strip(), phone, email, password, confirm]):
-            errors.append("Please fill all required fields.")
-        if not valid_email(email):
-            errors.append("Enter a valid email address.")
-        if len(phone) < 10:
-            errors.append("Enter a valid phone number with country code, e.g. +919876543210.")
-        if len(password) < 8:
-            errors.append("Password must be at least 8 characters.")
-        if password != confirm:
-            errors.append("Passwords do not match.")
-        existing = email_or_phone_exists(email, phone)
-        if existing:
-            errors.append("An account already exists with this email or phone.")
+        st.info("Please login or create an account.")
 
-        if errors:
-            for e in errors:
-                st.error(e)
+        st.markdown("---")
+
+        st.markdown(
+            """
+            **PragyanAI Student Verification**
+
+            Secure student registration and
+            verification platform.
+
+            **Features**
+
+            - 1. Student Registration
+            - 2. Email OTP Verification
+            - 3. Phone OTP Verification
+            - 4. Secure Login
+            - 5. Admin Approval
+            - 6. Student Dashboard
+            """
+        )
+
+
+# ============================================================
+# IF STUDENT IS ALREADY LOGGED IN
+# ============================================================
+
+if is_student_logged_in():
+
+    st.markdown(
+        '<div class="main-title"> Student Dashboard</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="subtitle">'
+        'Welcome to the PragyanAI Student Verification Portal.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "You are already logged in as a student. "
+        "Use the Student Dashboard from the sidebar."
+    )
+
+    if st.button(
+        "Open Student Dashboard",
+        type="primary"
+    ):
+        st.switch_page(
+            "pages/1_Student_Dashboard.py"
+        )
+
+    st.stop()
+
+
+# ============================================================
+# IF ADMIN IS ALREADY LOGGED IN
+# ============================================================
+
+if is_admin_logged_in():
+
+    st.markdown(
+        '<div class="main-title"> Admin Dashboard</div>',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        '<div class="subtitle">'
+        'Manage PragyanAI student verification and approvals.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "You are already logged in as an administrator."
+    )
+
+    if st.button(
+        " Open Admin Dashboard",
+        type="primary"
+    ):
+        st.switch_page(
+            "pages/2_Admin_Dashboard.py"
+        )
+
+    st.stop()
+
+
+# ============================================================
+# HOME PAGE
+# ============================================================
+
+st.markdown(
+    '<div class="main-title">'
+    ' PragyanAI Student Verification'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">'
+    'Student Registration • Email Verification • Phone Verification '
+    '• Secure Login • Admin Approval'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# HOME INFORMATION
+# ============================================================
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric(
+        "🎓 Student Registration",
+        "Available"
+    )
+
+with col2:
+    st.metric(
+        "📧 Email Verification",
+        "OTP"
+    )
+
+with col3:
+    st.metric(
+        "📱 Phone Verification",
+        "OTP"
+    )
+
+with col4:
+    st.metric(
+        "🛡️ Admin Approval",
+        "Required"
+    )
+
+
+st.markdown("---")
+
+
+# ============================================================
+# MAIN TABS
+# ============================================================
+
+tab_login, tab_register, tab_admin = st.tabs(
+    [
+        "🎓 Student Login",
+        "📝 Create Student Account",
+        "🛡️ Admin Login",
+    ]
+)
+
+
+# ============================================================
+# TAB 1 — STUDENT LOGIN
+# ============================================================
+
+with tab_login:
+
+    st.markdown(
+        '<div class="section-title">'
+        '🎓 Student Login'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "Login using your registered email address and password."
+    )
+
+    with st.form("student_login_form"):
+
+        login_email = st.text_input(
+            "📧 Email Address",
+            placeholder="student@example.com"
+        )
+
+        login_password = st.text_input(
+            "🔐 Password",
+            type="password",
+            placeholder="Enter your password"
+        )
+
+        login_button = st.form_submit_button(
+            "🔐 Login",
+            type="primary",
+            use_container_width=True
+        )
+
+    if login_button:
+
+        login_email = login_email.strip().lower()
+
+        if not login_email:
+            st.error("Please enter your email address.")
+
+        elif not login_password:
+            st.error("Please enter your password.")
+
         else:
-            st.session_state.pending_student = {
-                "full_name": full_name.strip(), "college_name": college_name.strip(),
-                "degree": degree, "branch": branch.strip(), "tenth_cgpa": tenth,
-                "twelfth_cgpa": twelfth, "be_cgpa": be, "phone": phone, "email": email,
-                "password_hash": hash_password(password), "email_verified": 0, "phone_verified": 0
-            }
-            st.session_state.email_verified = False
-            st.session_state.phone_verified = False
-            st.success("Details captured. Complete Email and Phone verification below.")
 
-    if st.session_state.pending_student:
-        p = st.session_state.pending_student
-        st.divider()
-        st.subheader("Step 2 — Verify Email")
-        st.caption(f"Verification email will be sent to: {p['email']}")
-        if st.button("📧 Send Email OTP", key="send_email"):
-            try:
-                otp = generate_otp()
-                send_email_otp(p["email"], otp)
-                st.session_state.email_otp = otp
-                st.session_state.email_otp_time = time.time()
-                st.success("Email OTP sent.")
-            except Exception as e:
-                st.error(f"Could not send email OTP: {e}")
+            success, message, student = student_login(
+                login_email,
+                login_password,
+                None
+            )
 
-        email_otp_input = st.text_input("Enter Email OTP", key="email_otp_input")
-        if st.button("✅ Verify Email", key="verify_email"):
-            if not st.session_state.email_otp:
-                st.error("Send an Email OTP first.")
-            elif not otp_is_valid(st.session_state.email_otp_time):
-                st.session_state.email_otp = None
-                st.error("OTP expired. Send a new OTP.")
-            elif email_otp_input == st.session_state.email_otp:
-                st.session_state.email_verified = True
-                st.session_state.email_otp = None
-                st.success("Email verified successfully.")
-            else:
-                st.error("Invalid Email OTP.")
+            if success:
 
-        st.subheader("Step 3 — Verify Phone")
-        st.caption(f"SMS OTP will be sent to: {p['phone']}")
-        if st.button("📱 Send Phone OTP", key="send_phone"):
-            try:
-                status = send_phone_otp(p["phone"])
-                st.success(f"Phone OTP sent. Twilio status: {status}")
-            except Exception as e:
-                st.error(f"Could not send SMS OTP: {e}")
+                # ------------------------------------------------
+                # Verify Email and Phone before login
+                # ------------------------------------------------
 
-        phone_otp_input = st.text_input("Enter Phone OTP", key="phone_otp_input")
-        if st.button("✅ Verify Phone", key="verify_phone"):
-            try:
-                if verify_phone_otp(p["phone"], phone_otp_input):
-                    st.session_state.phone_verified = True
-                    st.success("Phone verified successfully.")
+                if not student["email_verified"]:
+                    st.error(
+                        "📧 Your email address is not verified."
+                    )
+
+                elif not student["phone_verified"]:
+                    st.error(
+                        "📱 Your phone number is not verified."
+                    )
+
                 else:
-                    st.error("Invalid Phone OTP.")
-            except Exception as e:
-                st.error(f"Phone verification failed: {e}")
 
-        st.write("### Verification Status")
-        v1, v2 = st.columns(2)
-        v1.success("Email Verified ✅" if st.session_state.email_verified else "Email Not Verified ❌")
-        v2.success("Phone Verified ✅" if st.session_state.phone_verified else "Phone Not Verified ❌")
+                    set_student_session(student)
 
-        if st.session_state.email_verified and st.session_state.phone_verified:
-            if st.button("🚀 Save Student Account", type="primary", key="save_student"):
-                try:
-                    create_student({**p, "email_verified": 1, "phone_verified": 1})
-                    st.session_state.pending_student = None
-                    st.session_state.email_verified = False
-                    st.session_state.phone_verified = False
-                    st.session_state.email_otp = None
-                    st.success("Account created successfully. Your application is now Pending Admin Approval.")
-                except Exception as e:
-                    st.error(f"Could not save account: {e}")
+                    st.success(
+                        "✅ Login successful. "
+                        "Opening Student Dashboard..."
+                    )
 
-with admin_tab:
-    st.subheader("Admin Login")
-    admin_email = st.text_input("Admin Email", key="admin_email")
-    admin_password = st.text_input("Admin Password", type="password", key="admin_password")
-    if st.button("Admin Login", type="primary", key="admin_login"):
-        if admin_email.strip().lower() == ADMIN_EMAIL.lower() and admin_password == ADMIN_PASSWORD:
-            st.session_state.role = "admin"
-            st.rerun()
+                    st.switch_page(
+                        "pages/1_🎓_Student_Dashboard.py"
+                    )
+
+            else:
+
+                st.error(message)
+
+
+# ============================================================
+# TAB 2 — CREATE STUDENT ACCOUNT
+# ============================================================
+
+with tab_register:
+
+    st.markdown(
+        '<div class="section-title">'
+        '📝 Create Student Account'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "Complete your profile and verify both your email "
+        "and phone number using OTP."
+    )
+
+    # ========================================================
+    # PERSONAL INFORMATION
+    # ========================================================
+
+    st.markdown("### 👤 Personal Information")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        full_name = st.text_input(
+            "Full Name *",
+            placeholder="Rahul Sharma",
+            key="registration_full_name"
+        )
+
+        college_name = st.text_input(
+            "College Name *",
+            placeholder="East West Institute of Technology",
+            key="registration_college"
+        )
+
+        degree = st.text_input(
+            "Degree *",
+            placeholder="B.E",
+            key="registration_degree"
+        )
+
+        branch = st.text_input(
+            "Branch *",
+            placeholder="Computer Science and Engineering",
+            key="registration_branch"
+        )
+
+    with col2:
+
+        phone = st.text_input(
+            "📱 Phone Number *",
+            placeholder="+919900000001",
+            key="registration_phone"
+        )
+
+        email = st.text_input(
+            "📧 Email Address *",
+            placeholder="student@example.com",
+            key="registration_email"
+        )
+
+        password = st.text_input(
+            "🔐 Password *",
+            type="password",
+            placeholder="Minimum 8 characters",
+            key="registration_password"
+        )
+
+        confirm_password = st.text_input(
+            "🔐 Confirm Password *",
+            type="password",
+            placeholder="Re-enter password",
+            key="registration_confirm_password"
+        )
+
+
+    # ========================================================
+    # ACADEMIC INFORMATION
+    # ========================================================
+
+    st.markdown("### 📚 Academic Information")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        tenth_cgpa = st.number_input(
+            "10th CGPA",
+            min_value=0.0,
+            max_value=10.0,
+            value=0.0,
+            step=0.1,
+            key="registration_tenth"
+        )
+
+    with col2:
+
+        twelfth_cgpa = st.number_input(
+            "12th CGPA",
+            min_value=0.0,
+            max_value=10.0,
+            value=0.0,
+            step=0.1,
+            key="registration_twelfth"
+        )
+
+    with col3:
+
+        be_cgpa = st.number_input(
+            "B.E / B.Tech CGPA",
+            min_value=0.0,
+            max_value=10.0,
+            value=0.0,
+            step=0.1,
+            key="registration_be"
+        )
+
+
+    st.markdown("---")
+
+
+    # ========================================================
+    # EMAIL OTP
+    # ========================================================
+
+    st.markdown("### 📧 Email Verification")
+
+    email_verified = st.session_state.get(
+        "email_verified",
+        False
+    )
+
+    if email_verified:
+
+        st.success(
+            "✅ Email address verified successfully."
+        )
+
+    else:
+
+        email_col1, email_col2 = st.columns(
+            [3, 1]
+        )
+
+        with email_col1:
+
+            email_otp = st.text_input(
+                "Enter Email OTP",
+                max_chars=6,
+                placeholder="6-digit OTP",
+                key="registration_email_otp"
+            )
+
+        with email_col2:
+
+            st.write("")
+
+            send_email_button = st.button(
+                "📧 Send Email OTP",
+                use_container_width=True
+            )
+
+        if send_email_button:
+
+            email_clean = email.strip().lower()
+
+            valid_email, email_message = validate_email(
+                email_clean
+            )
+
+            if not valid_email:
+
+                st.error(email_message)
+
+            else:
+
+                # --------------------------------------------
+                # Check if email already exists
+                # --------------------------------------------
+
+                existing_student = get_student_by_email(
+                    email_clean
+                )
+
+                if existing_student:
+
+                    st.error(
+                        "An account with this email address "
+                        "already exists. Please use another "
+                        "email address or login."
+                    )
+
+                else:
+
+                    try:
+
+                        otp = generate_otp()
+
+                        success, message = send_email_otp(
+                            email_clean,
+                            otp
+                        )
+
+                        if success:
+
+                            st.session_state.email_otp = otp
+                            st.session_state.email_otp_time = (
+                                __import__("time").time()
+                            )
+
+                            st.session_state.registration_data = {
+                                "email": email_clean
+                            }
+
+                            st.success(
+                                "✅ Email OTP sent successfully."
+                            )
+
+                            st.info(
+                                "Please check your email inbox "
+                                "and enter the 6-digit OTP."
+                            )
+
+                        else:
+
+                            st.error(message)
+
+                    except Exception as e:
+
+                        st.error(
+                            f"Unable to send email OTP: {e}"
+                        )
+
+
+        # ----------------------------------------------------
+        # Verify Email OTP
+        # ----------------------------------------------------
+
+        verify_email_button = st.button(
+            "✅ Verify Email OTP",
+            use_container_width=True
+        )
+
+        if verify_email_button:
+
+            stored_otp = st.session_state.get(
+                "email_otp"
+            )
+
+            otp_time = st.session_state.get(
+                "email_otp_time"
+            )
+
+            if not stored_otp:
+
+                st.error(
+                    "Please request an Email OTP first."
+                )
+
+            elif not otp_is_valid(otp_time):
+
+                st.error(
+                    "⏰ OTP has expired. "
+                    "Please request a new OTP."
+                )
+
+            elif email_otp.strip() != stored_otp:
+
+                st.error(
+                    "❌ Invalid Email OTP."
+                )
+
+            else:
+
+                st.session_state.email_verified = True
+
+                st.success(
+                    "✅ Email verified successfully."
+                )
+
+                st.rerun()
+
+
+    # ========================================================
+    # PHONE OTP
+    # ========================================================
+
+    st.markdown("### 📱 Phone Verification")
+
+    phone_verified = st.session_state.get(
+        "phone_verified",
+        False
+    )
+
+    if phone_verified:
+
+        st.success(
+            "✅ Phone number verified successfully."
+        )
+
+    else:
+
+        phone_col1, phone_col2 = st.columns(
+            [3, 1]
+        )
+
+        with phone_col1:
+
+            phone_otp = st.text_input(
+                "Enter Phone OTP",
+                max_chars=10,
+                placeholder="Enter OTP received on phone",
+                key="registration_phone_otp"
+            )
+
+        with phone_col2:
+
+            st.write("")
+
+            send_phone_button = st.button(
+                "📱 Send Phone OTP",
+                use_container_width=True
+            )
+
+        if send_phone_button:
+
+            phone_clean = phone.strip()
+
+            valid_phone, phone_message = validate_phone(
+                phone_clean
+            )
+
+            if not valid_phone:
+
+                st.error(phone_message)
+
+            else:
+
+                # --------------------------------------------
+                # Check if phone already exists
+                # --------------------------------------------
+
+                from db import get_student_by_phone
+
+                existing_student = get_student_by_phone(
+                    phone_clean
+                )
+
+                if existing_student:
+
+                    st.error(
+                        "An account with this phone number "
+                        "already exists. Please use another "
+                        "phone number or login."
+                    )
+
+                else:
+
+                    try:
+
+                        success, message = send_phone_otp(
+                            phone_clean
+                        )
+
+                        if success:
+
+                            st.session_state.phone_otp_sent = True
+                            st.session_state.registration_data = {
+                                **st.session_state.get(
+                                    "registration_data",
+                                    {}
+                                ),
+                                "phone": phone_clean,
+                            }
+
+                            st.success(
+                                "✅ Phone OTP sent successfully."
+                            )
+
+                            st.info(
+                                "Please check your phone for "
+                                "the verification OTP."
+                            )
+
+                        else:
+
+                            st.error(message)
+
+                    except Exception as e:
+
+                        st.error(
+                            f"Unable to send phone OTP: {e}"
+                        )
+
+
+        # ----------------------------------------------------
+        # Verify Phone OTP
+        # ----------------------------------------------------
+
+        verify_phone_button = st.button(
+            "✅ Verify Phone OTP",
+            use_container_width=True
+        )
+
+        if verify_phone_button:
+
+            if not st.session_state.get(
+                "phone_otp_sent",
+                False
+            ):
+
+                st.error(
+                    "Please request a Phone OTP first."
+                )
+
+            else:
+
+                phone_clean = phone.strip()
+
+                valid_phone, phone_message = validate_phone(
+                    phone_clean
+                )
+
+                if not valid_phone:
+
+                    st.error(phone_message)
+
+                else:
+
+                    try:
+
+                        success, message = verify_phone_otp(
+                            phone_clean,
+                            phone_otp.strip()
+                        )
+
+                        if success:
+
+                            st.session_state.phone_verified = True
+
+                            st.success(
+                                "✅ Phone number verified successfully."
+                            )
+
+                            st.rerun()
+
+                        else:
+
+                            st.error(message)
+
+                    except Exception as e:
+
+                        st.error(
+                            f"Unable to verify phone OTP: {e}"
+                        )
+
+
+    # ========================================================
+    # REGISTRATION
+    # ========================================================
+
+    st.markdown("---")
+
+    both_verified = (
+        st.session_state.get(
+            "email_verified",
+            False
+        )
+        and
+        st.session_state.get(
+            "phone_verified",
+            False
+        )
+    )
+
+    if both_verified:
+
+        st.success(
+            "✅ Email and Phone are both verified. "
+            "You can now create your student account."
+        )
+
+    else:
+
+        st.warning(
+            "⚠️ Please verify both Email and Phone "
+            "before creating your account."
+        )
+
+
+    # ========================================================
+    # CREATE ACCOUNT BUTTON
+    # ========================================================
+
+    create_account_button = st.button(
+        "🎓 Create Student Account",
+        type="primary",
+        use_container_width=True,
+        disabled=not both_verified
+    )
+
+
+    if create_account_button:
+
+        # ====================================================
+        # VALIDATE BASIC INFORMATION
+        # ====================================================
+
+        if not full_name.strip():
+
+            st.error(
+                "Please enter your full name."
+            )
+            st.stop()
+
+        if not college_name.strip():
+
+            st.error(
+                "Please enter your college name."
+            )
+            st.stop()
+
+        if not degree.strip():
+
+            st.error(
+                "Please enter your degree."
+            )
+            st.stop()
+
+        if not branch.strip():
+
+            st.error(
+                "Please enter your branch."
+            )
+            st.stop()
+
+        if not phone.strip():
+
+            st.error(
+                "Please enter your phone number."
+            )
+            st.stop()
+
+        if not email.strip():
+
+            st.error(
+                "Please enter your email address."
+            )
+            st.stop()
+
+
+        # ====================================================
+        # VALIDATE EMAIL
+        # ====================================================
+
+        email_clean = email.strip().lower()
+
+        valid_email, email_message = validate_email(
+            email_clean
+        )
+
+        if not valid_email:
+
+            st.error(email_message)
+            st.stop()
+
+
+        # ====================================================
+        # VALIDATE PHONE
+        # ====================================================
+
+        phone_clean = phone.strip()
+
+        valid_phone, phone_message = validate_phone(
+            phone_clean
+        )
+
+        if not valid_phone:
+
+            st.error(phone_message)
+            st.stop()
+
+
+        # ====================================================
+        # PASSWORD VALIDATION
+        # ====================================================
+
+        if not password:
+
+            st.error(
+                "Please enter a password."
+            )
+            st.stop()
+
+        if password != confirm_password:
+
+            st.error(
+                "Passwords do not match."
+            )
+            st.stop()
+
+
+        # ====================================================
+        # CHECK EXISTING EMAIL / PHONE
+        # ====================================================
+
+        existing_email = get_student_by_email(
+            email_clean
+        )
+
+        if existing_email:
+
+            st.error(
+                "A student account with this email "
+                "already exists."
+            )
+            st.stop()
+
+
+        from db import get_student_by_phone
+
+        existing_phone = get_student_by_phone(
+            phone_clean
+        )
+
+        if existing_phone:
+
+            st.error(
+                "A student account with this phone "
+                "number already exists."
+            )
+            st.stop()
+
+
+        # ====================================================
+        # CREATE STUDENT
+        # ====================================================
+
+        try:
+
+            student_id = create_student(
+                full_name=full_name.strip(),
+                college_name=college_name.strip(),
+                degree=degree.strip(),
+                branch=branch.strip(),
+                tenth_cgpa=tenth_cgpa,
+                twelfth_cgpa=twelfth_cgpa,
+                be_cgpa=be_cgpa,
+                phone=phone_clean,
+                email=email_clean,
+                password=password,
+                email_verified=1,
+                phone_verified=1,
+            )
+
+            if student_id:
+
+                st.success(
+                    "🎉 Student account created successfully!"
+                )
+
+                st.info(
+                    f"Your Student ID is **{student_id}**"
+                )
+
+                st.success(
+                    "You can now login using your email "
+                    "and password."
+                )
+
+                # --------------------------------------------
+                # Clear registration verification state
+                # --------------------------------------------
+
+                st.session_state.email_otp = None
+                st.session_state.email_otp_time = None
+                st.session_state.phone_otp_sent = False
+                st.session_state.email_verified = False
+                st.session_state.phone_verified = False
+                st.session_state.registration_data = {}
+
+            else:
+
+                st.error(
+                    "Unable to create student account."
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"Registration failed: {e}"
+            )
+
+
+# ============================================================
+# TAB 3 — ADMIN LOGIN
+# ============================================================
+
+with tab_admin:
+
+    st.markdown(
+        '<div class="section-title">'
+        '🛡️ Admin Login'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    st.warning(
+        "This section is only for authorized PragyanAI administrators."
+    )
+
+    with st.form("admin_login_form"):
+
+        admin_email = st.text_input(
+            "📧 Admin Email",
+            placeholder="admin@pragyanai.com"
+        )
+
+        admin_password = st.text_input(
+            "🔐 Admin Password",
+            type="password",
+            placeholder="Enter admin password"
+        )
+
+        admin_login_button = st.form_submit_button(
+            "🛡️ Admin Login",
+            type="primary",
+            use_container_width=True
+        )
+
+
+    if admin_login_button:
+
+        admin_email = admin_email.strip().lower()
+
+        if not admin_email:
+
+            st.error(
+                "Please enter admin email."
+            )
+
+        elif not admin_password:
+
+            st.error(
+                "Please enter admin password."
+            )
+
         else:
-            st.error("Invalid admin credentials.")
 
-st.divider()
-st.caption("PragyanAI • Student Account Verification System • Streamlit + SQLite + SMTP + Twilio Verify")
+            success, message = admin_login(
+                admin_email,
+                admin_password
+            )
+
+            if success:
+
+                set_admin_session()
+
+                st.success(
+                    "✅ Admin login successful."
+                )
+
+                st.switch_page(
+                    "pages/2_🛡️_Admin_Dashboard.py"
+                )
+
+            else:
+
+                st.error(message)
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.markdown("---")
+
+st.caption(
+    "© PragyanAI — Student Verification System"
+)
+
+st.caption(
+    "Secure Student Registration • Email OTP • Phone OTP "
+    "• Admin Approval"
+)
+
