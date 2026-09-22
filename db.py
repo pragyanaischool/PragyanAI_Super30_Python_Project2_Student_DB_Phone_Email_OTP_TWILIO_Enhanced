@@ -874,360 +874,209 @@ def student_counts():
 # INSERT SAMPLE STUDENTS
 # ============================================================
 
-def insert_sample_students(
-    connection
-):
+def insert_sample_students(connection):
     """
-    Insert sample students for testing.
+    Insert sample students for development/testing.
 
-    The function checks whether sample data
-    already exists before inserting.
+    This function is safe to run multiple times.
 
-    Therefore:
-
-        Running init_db()
-        multiple times
-
-    will NOT create duplicate
-    sample students.
+    Existing students are NOT deleted or modified.
+    If a sample student's email or phone already exists,
+    that sample record is skipped.
     """
+
+    sample_students = [
+        {
+            "full_name": "Rahul Sharma",
+            "college_name": "East West Institute of Technology",
+            "degree": "B.E",
+            "branch": "CSE",
+            "tenth_cgpa": 9.2,
+            "twelfth_cgpa": 9.0,
+            "be_cgpa": 8.7,
+            "phone": "+919900000001",
+            "email": "rahul.sharma@example.com",
+            "password": "Student@123",
+            "email_verified": 1,
+            "phone_verified": 1,
+            "approval_status": "APPROVED",
+            "rejection_reason": None,
+        },
+        {
+            "full_name": "Priya Kumar",
+            "college_name": "Cambridge Institute of Technology",
+            "degree": "B.E",
+            "branch": "ISE",
+            "tenth_cgpa": 9.5,
+            "twelfth_cgpa": 9.2,
+            "be_cgpa": 8.9,
+            "phone": "+919900000002",
+            "email": "priya.kumar@example.com",
+            "password": "Student@123",
+            "email_verified": 1,
+            "phone_verified": 1,
+            "approval_status": "PENDING",
+            "rejection_reason": None,
+        },
+        {
+            "full_name": "Arjun Rao",
+            "college_name": "Sapthagiri College of Engineering",
+            "degree": "B.E",
+            "branch": "AI&DS",
+            "tenth_cgpa": 8.8,
+            "twelfth_cgpa": 8.6,
+            "be_cgpa": 7.9,
+            "phone": "+919900000003",
+            "email": "arjun.rao@example.com",
+            "password": "Student@123",
+            "email_verified": 1,
+            "phone_verified": 1,
+            "approval_status": "REJECTED",
+            "rejection_reason": (
+                "Academic details require review."
+            ),
+        },
+        {
+            "full_name": "Sneha Reddy",
+            "college_name": "Atria Institute of Technology",
+            "degree": "B.E",
+            "branch": "ECE",
+            "tenth_cgpa": 9.1,
+            "twelfth_cgpa": 8.9,
+            "be_cgpa": 8.3,
+            "phone": "+919900000004",
+            "email": "sneha.reddy@example.com",
+            "password": "Student@123",
+            "email_verified": 1,
+            "phone_verified": 0,
+            "approval_status": "PENDING",
+            "rejection_reason": None,
+        },
+        {
+            "full_name": "Vivek Kumar",
+            "college_name": "AMC Engineering College",
+            "degree": "B.E",
+            "branch": "ISE",
+            "tenth_cgpa": 8.7,
+            "twelfth_cgpa": 8.5,
+            "be_cgpa": 8.1,
+            "phone": "+919900000005",
+            "email": "vivek.kumar@example.com",
+            "password": "Student@123",
+            "email_verified": 0,
+            "phone_verified": 1,
+            "approval_status": "PENDING",
+            "rejection_reason": None,
+        },
+    ]
 
     cursor = connection.cursor()
 
-    # --------------------------------------------------------
-    # Check whether students already exist
-    # --------------------------------------------------------
-
-    cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM students
-        """
-    )
-
-    count = cursor.fetchone()[0]
-
-    if count > 0:
-
-        return
-
-
-    # ========================================================
-    # SAMPLE PASSWORDS
-    # ========================================================
-
-    #
-    # These are ONLY demonstration accounts.
-    #
-    # Student 1:
-    #     Email:
-    #     rahul.sharma@example.com
-    #
-    #     Password:
-    #     Student@123
-    #
-    #
-    # Student 2:
-    #     Email:
-    #     priya.kumar@example.com
-    #
-    #     Password:
-    #     Student@123
-    #
-    #
-    # Student 3:
-    #     Email:
-    #     arjun.rao@example.com
-    #
-    #     Password:
-    #     Student@123
-    #
-    #
-    # Student 4:
-    #     Email:
-    #     sneha.reddy@example.com
-    #
-    #     Password:
-    #     Student@123
-    #
-    #
-    # Student 5:
-    #     Email:
-    #     vivek.kumar@example.com
-    #
-    #     Password:
-    #     Student@123
-    #
-    # ========================================================
-
-
-    password_hash_1 = hash_sample_password(
-        "Student@123"
-    )
-
-    password_hash_2 = hash_sample_password(
-        "Student@123"
-    )
-
-    password_hash_3 = hash_sample_password(
-        "Student@123"
-    )
-
-    password_hash_4 = hash_sample_password(
-        "Student@123"
-    )
-
-    password_hash_5 = hash_sample_password(
-        "Student@123"
-    )
-
-
-    # ========================================================
-    # SAMPLE STUDENTS
-    # ========================================================
-
-    sample_students = [
-
-        # ----------------------------------------------------
-        # STUDENT 1
-        # APPROVED
-        # EMAIL + PHONE VERIFIED
-        # ----------------------------------------------------
-
-        (
-            "Rahul Sharma",
-
-            "East West Institute of Technology",
-
-            "B.E",
-
-            "Computer Science and Engineering",
-
-            9.2,
-
-            9.0,
-
-            8.7,
-
-            "+919900000001",
-
-            "rahul.sharma@example.com",
-
-            password_hash_1,
-
-            1,
-
-            1,
-
-            "APPROVED",
-
-            None
-        ),
-
-
-        # ----------------------------------------------------
-        # STUDENT 2
-        # PENDING
-        # EMAIL + PHONE VERIFIED
-        # ----------------------------------------------------
-
-        (
-            "Priya Kumar",
-
-            "Cambridge Institute of Technology",
-
-            "B.E",
-
-            "Information Science and Engineering",
-
-            9.5,
-
-            9.2,
-
-            8.9,
-
-            "+919900000002",
-
-            "priya.kumar@example.com",
-
-            password_hash_2,
-
-            1,
-
-            1,
-
-            "PENDING",
-
-            None
-        ),
-
-
-        # ----------------------------------------------------
-        # STUDENT 3
-        # REJECTED
-        # EMAIL + PHONE VERIFIED
-        # ----------------------------------------------------
-
-        (
-            "Arjun Rao",
-
-            "Sapthagiri College of Engineering",
-
-            "B.E",
-
-            "Artificial Intelligence and Data Science",
-
-            8.8,
-
-            8.6,
-
-            7.9,
-
-            "+919900000003",
-
-            "arjun.rao@example.com",
-
-            password_hash_3,
-
-            1,
-
-            1,
-
-            "REJECTED",
-
-            "Academic details require review."
-        ),
-
-
-        # ----------------------------------------------------
-        # STUDENT 4
-        # PENDING
-        # EMAIL VERIFIED
-        # PHONE NOT VERIFIED
-        # ----------------------------------------------------
-
-        (
-            "Sneha Reddy",
-
-            "Atria Institute of Technology",
-
-            "B.E",
-
-            "Electronics and Communication Engineering",
-
-            9.1,
-
-            8.9,
-
-            8.3,
-
-            "+919900000004",
-
-            "sneha.reddy@example.com",
-
-            password_hash_4,
-
-            1,
-
-            0,
-
-            "PENDING",
-
-            None
-        ),
-
-
-        # ----------------------------------------------------
-        # STUDENT 5
-        # PENDING
-        # EMAIL NOT VERIFIED
-        # PHONE VERIFIED
-        # ----------------------------------------------------
-
-        (
-            "Vivek Kumar",
-
-            "AMC Engineering College",
-
-            "B.E",
-
-            "Information Science and Engineering",
-
-            8.7,
-
-            8.5,
-
-            8.1,
-
-            "+919900000005",
-
-            "vivek.kumar@example.com",
-
-            password_hash_5,
-
-            0,
-
-            1,
-
-            "PENDING",
-
-            None
+    inserted_count = 0
+    skipped_count = 0
+
+    for student in sample_students:
+
+        # ====================================================
+        # CHECK EMAIL
+        # ====================================================
+
+        cursor.execute(
+            """
+            SELECT id
+            FROM students
+            WHERE email = ?
+            LIMIT 1
+            """,
+            (
+                student["email"],
+            )
         )
 
-    ]
+        existing_email = cursor.fetchone()
+
+        if existing_email:
+
+            skipped_count += 1
+            continue
 
 
-    # ========================================================
-    # INSERT
-    # ========================================================
+        # ====================================================
+        # CHECK PHONE
+        # ====================================================
 
-    cursor.executemany(
-        """
-        INSERT INTO students (
-
-            full_name,
-
-            college_name,
-
-            degree,
-
-            branch,
-
-            tenth_cgpa,
-
-            twelfth_cgpa,
-
-            be_cgpa,
-
-            phone,
-
-            email,
-
-            password_hash,
-
-            email_verified,
-
-            phone_verified,
-
-            approval_status,
-
-            rejection_reason
-
+        cursor.execute(
+            """
+            SELECT id
+            FROM students
+            WHERE phone = ?
+            LIMIT 1
+            """,
+            (
+                student["phone"],
+            )
         )
 
-        VALUES (
+        existing_phone = cursor.fetchone()
 
-            ?, ?, ?, ?, ?, ?, ?,
+        if existing_phone:
 
-            ?, ?, ?,
+            skipped_count += 1
+            continue
 
-            ?, ?, ?, ?
 
+        # ====================================================
+        # HASH SAMPLE PASSWORD
+        # ====================================================
+
+        password_hash = hash_sample_password(
+            student["password"]
         )
-        """,
 
-        sample_students
-    )
+
+        # ====================================================
+        # INSERT SAMPLE STUDENT
+        # ====================================================
+
+        cursor.execute(
+            """
+            INSERT INTO students (
+                full_name,
+                college_name,
+                degree,
+                branch,
+                tenth_cgpa,
+                twelfth_cgpa,
+                be_cgpa,
+                phone,
+                email,
+                password_hash,
+                email_verified,
+                phone_verified,
+                approval_status,
+                rejection_reason
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                student["full_name"],
+                student["college_name"],
+                student["degree"],
+                student["branch"],
+                student["tenth_cgpa"],
+                student["twelfth_cgpa"],
+                student["be_cgpa"],
+                student["phone"],
+                student["email"],
+                password_hash,
+                student["email_verified"],
+                student["phone_verified"],
+                student["approval_status"],
+                student["rejection_reason"],
+            )
+        )
+
+        inserted_count += 1
 
 
     # ========================================================
@@ -1237,6 +1086,15 @@ def insert_sample_students(
     connection.commit()
 
 
+    # ========================================================
+    # OPTIONAL RETURN INFORMATION
+    # ========================================================
+
+    return {
+        "inserted": inserted_count,
+        "skipped": skipped_count,
+    }
+    
 # ============================================================
 # RESET DATABASE - DEVELOPMENT ONLY
 # ============================================================
