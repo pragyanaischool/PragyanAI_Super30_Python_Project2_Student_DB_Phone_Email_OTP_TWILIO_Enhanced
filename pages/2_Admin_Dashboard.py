@@ -46,12 +46,12 @@ initialize_session_state()
 if not is_admin_logged_in():
 
     st.warning(
-        "🔐 Please login as an administrator to access "
+        " Please login as an administrator to access "
         "the Admin Dashboard."
     )
 
     if st.button(
-        "🏠 Go to Login",
+        " Go to Login",
         type="primary"
     ):
         st.switch_page("app.py")
@@ -128,12 +128,14 @@ st.markdown(
 # ============================================================
 
 with st.sidebar:
-
-    st.markdown("## 🛡️ PragyanAI")
+    
+    st.image("PragyanAI_Transperent.png")
+    
+    st.markdown("##  PragyanAI")
 
     st.markdown("---")
 
-    st.success("🛡️ Administrator")
+    st.success(" Administrator")
 
     st.markdown(
         "**Student Verification Portal**"
@@ -142,21 +144,21 @@ with st.sidebar:
     st.markdown("---")
 
     if st.button(
-        "🏠 Home",
+        " Home",
         use_container_width=True
     ):
 
         st.switch_page("app.py")
 
     if st.button(
-        "🔄 Refresh Dashboard",
+        " Refresh Dashboard",
         use_container_width=True
     ):
 
         st.rerun()
 
     if st.button(
-        "🚪 Logout",
+        " Logout",
         use_container_width=True
     ):
 
@@ -171,7 +173,7 @@ with st.sidebar:
 
 st.markdown(
     '<div class="dashboard-title">'
-    '🛡️ Admin Dashboard'
+    ' Admin Dashboard'
     '</div>',
     unsafe_allow_html=True
 )
@@ -259,7 +261,7 @@ else:
 # ============================================================
 
 st.markdown(
-    "### 📊 Student Overview"
+    "###  Student Overview"
 )
 
 col1, col2, col3, col4 = st.columns(4)
@@ -267,7 +269,7 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
 
     st.metric(
-        "👥 Total Students",
+        " Total Students",
         total_students
     )
 
@@ -281,7 +283,7 @@ with col2:
 with col3:
 
     st.metric(
-        "⏳ Yet to Approve",
+        " Yet to Approve",
         pending_count
     )
 
@@ -298,14 +300,14 @@ col5, col6 = st.columns(2)
 with col5:
 
     st.metric(
-        "📧 Email Verified",
+        " Email Verified",
         email_verified_count
     )
 
 with col6:
 
     st.metric(
-        "📱 Phone Verified",
+        " Phone Verified",
         phone_verified_count
     )
 
@@ -332,7 +334,7 @@ if df.empty:
 
 st.markdown(
     '<div class="section-title">'
-    '🔎 Filter Students'
+    ' Filter Students'
     '</div>',
     unsafe_allow_html=True
 )
@@ -440,7 +442,7 @@ with filter_col5:
 with filter_col6:
 
     search_text = st.text_input(
-        "🔎 Search",
+        " Search",
         placeholder="Name / Email / Phone"
     )
 
@@ -658,10 +660,10 @@ if "approval_status" in display_df.columns:
 
 tab_all, tab_approved, tab_pending, tab_rejected = st.tabs(
     [
-        "👥 All Students",
-        "✅ Approved",
-        "⏳ Yet to Approve",
-        "❌ Rejected",
+        "1. All Students",
+        "2. Approved",
+        "3. Yet to Approve",
+        "4. Rejected",
     ]
 )
 
@@ -673,7 +675,7 @@ tab_all, tab_approved, tab_pending, tab_rejected = st.tabs(
 with tab_all:
 
     st.markdown(
-        "### 👥 All Students"
+        "###  All Students"
     )
 
     if display_df.empty:
@@ -698,7 +700,7 @@ with tab_all:
 with tab_approved:
 
     st.markdown(
-        "### ✅ Approved Students"
+        "###  Approved Students"
     )
 
     approved_df = display_df[
@@ -728,7 +730,7 @@ with tab_approved:
 with tab_pending:
 
     st.markdown(
-        "### ⏳ Students Yet to Approve"
+        "###  Students Yet to Approve"
     )
 
     pending_df = display_df[
@@ -758,7 +760,7 @@ with tab_pending:
 with tab_rejected:
 
     st.markdown(
-        "### ❌ Rejected Students"
+        "###  Rejected Students"
     )
 
     rejected_df = display_df[
@@ -788,7 +790,7 @@ with tab_rejected:
 st.markdown("---")
 
 st.markdown(
-    "### 📥 Export Student Data"
+    "###  Export Student Data"
 )
 
 csv_df = filtered_df.copy()
@@ -798,7 +800,7 @@ csv_data = csv_df.to_csv(
 ).encode("utf-8")
 
 st.download_button(
-    label="📥 Download Filtered Students CSV",
+    label=" Download Filtered Students CSV",
     data=csv_data,
     file_name="pragyanai_students.csv",
     mime="text/csv",
@@ -814,7 +816,7 @@ st.markdown("---")
 
 st.markdown(
     '<div class="section-title">'
-    '👤 Student Management'
+    ' Student Management'
     '</div>',
     unsafe_allow_html=True
 )
@@ -885,7 +887,7 @@ if not selected_student:
 # ============================================================
 
 st.markdown(
-    "### 👤 Student Profile"
+    "###  Student Profile"
 )
 
 
@@ -1000,7 +1002,7 @@ with profile_col2:
 st.markdown("---")
 
 st.markdown(
-    "### 🔐 Verification Status"
+    "###  Verification Status"
 )
 
 
@@ -1012,13 +1014,13 @@ with verification_col1:
     if selected_student["email_verified"]:
 
         st.success(
-            "📧 Email Verified"
+            " Email Verified"
         )
 
     else:
 
         st.error(
-            "📧 Email Not Verified"
+            " Email Not Verified"
         )
 
 
@@ -1027,13 +1029,13 @@ with verification_col2:
     if selected_student["phone_verified"]:
 
         st.success(
-            "📱 Phone Verified"
+            " Phone Verified"
         )
 
     else:
 
         st.error(
-            "📱 Phone Not Verified"
+            " Phone Not Verified"
         )
 
 
@@ -1050,7 +1052,7 @@ current_status = (
 st.markdown("---")
 
 st.markdown(
-    "### 📋 Current Approval Status"
+    "###  Current Approval Status"
 )
 
 
@@ -1063,13 +1065,13 @@ if current_status == "APPROVED":
 elif current_status == "PENDING":
 
     st.warning(
-        "⏳ PENDING"
+        " PENDING"
     )
 
 elif current_status == "REJECTED":
 
     st.error(
-        "❌ REJECTED"
+        " REJECTED"
     )
 
 else:
@@ -1086,7 +1088,7 @@ else:
 if selected_student["rejection_reason"]:
 
     st.markdown(
-        "#### 📝 Existing Rejection Reason"
+        "####  Existing Rejection Reason"
     )
 
     st.info(
@@ -1101,7 +1103,7 @@ if selected_student["rejection_reason"]:
 st.markdown("---")
 
 st.markdown(
-    "### 🛡️ Manage Student Approval"
+    "###  Manage Student Approval"
 )
 
 
@@ -1121,7 +1123,7 @@ action_col1, action_col2, action_col3 = st.columns(3)
 with action_col1:
 
     approve_button = st.button(
-        "✅ Approve Student",
+        " Approve Student",
         type="primary",
         use_container_width=True
     )
@@ -1134,7 +1136,7 @@ with action_col1:
 with action_col2:
 
     pending_button = st.button(
-        "⏳ Set Pending",
+        " Set Pending",
         use_container_width=True
     )
 
@@ -1146,7 +1148,7 @@ with action_col2:
 with action_col3:
 
     reject_button = st.button(
-        "❌ Reject Student",
+        " Reject Student",
         use_container_width=True
     )
 
@@ -1229,7 +1231,7 @@ if pending_button:
         if success:
 
             st.success(
-                f"⏳ {selected_student['full_name']} "
+                f" {selected_student['full_name']} "
                 "has been moved to Pending."
             )
 
@@ -1325,7 +1327,7 @@ if reject_button:
 st.markdown("---")
 
 st.markdown(
-    "### 📌 Approval Rules"
+    "###  Approval Rules"
 )
 
 rule_col1, rule_col2, rule_col3 = st.columns(3)
@@ -1335,7 +1337,7 @@ with rule_col1:
 
     st.markdown(
         """
-        **📧 Email**
+        ** Email**
 
         Student must have a
         verified email address.
@@ -1347,7 +1349,7 @@ with rule_col2:
 
     st.markdown(
         """
-        **📱 Phone**
+        ** Phone**
 
         Student must have a
         verified phone number.
@@ -1359,7 +1361,7 @@ with rule_col3:
 
     st.markdown(
         """
-        **🛡️ Approval**
+        ** Approval**
 
         Admin can approve only
         after both verifications.
