@@ -126,9 +126,8 @@ st.markdown(
 # ============================================================
 
 with st.sidebar:
-
+    st.image("PragyanAI_Transperent.png")
     st.markdown("##  PragyanAI")
-
     st.markdown("---")
 
     if is_student_logged_in():
@@ -338,9 +337,9 @@ st.markdown("---")
 
 tab_login, tab_register, tab_admin = st.tabs(
     [
-        "🎓 Student Login",
-        "📝 Create Student Account",
-        "🛡️ Admin Login",
+        "1. Student Login",
+        "2. Create Student Account",
+        "3. Admin Login",
     ]
 )
 
@@ -441,7 +440,7 @@ with tab_register:
 
     st.markdown(
         '<div class="section-title">'
-        '📝 Create Student Account'
+        ' Create Student Account'
         '</div>',
         unsafe_allow_html=True
     )
@@ -455,7 +454,7 @@ with tab_register:
     # PERSONAL INFORMATION
     # ========================================================
 
-    st.markdown("### 👤 Personal Information")
+    st.markdown("### Personal Information")
 
     col1, col2 = st.columns(2)
 
@@ -518,7 +517,7 @@ with tab_register:
     # ACADEMIC INFORMATION
     # ========================================================
 
-    st.markdown("### 📚 Academic Information")
+    st.markdown("### Academic Information")
 
     col1, col2, col3 = st.columns(3)
 
@@ -563,7 +562,7 @@ with tab_register:
     # EMAIL OTP
     # ========================================================
 
-    st.markdown("### 📧 Email Verification")
+    st.markdown("###  Email Verification")
 
     email_verified = st.session_state.get(
         "email_verified",
@@ -725,7 +724,7 @@ with tab_register:
     # PHONE OTP
     # ========================================================
 
-    st.markdown("### 📱 Phone Verification")
+    st.markdown("###  Phone Verification")
 
     phone_verified = st.session_state.get(
         "phone_verified",
@@ -933,7 +932,7 @@ with tab_register:
     # ========================================================
 
     create_account_button = st.button(
-        "🎓 Create Student Account",
+        " Create Student Account",
         type="primary",
         use_container_width=True,
         disabled=not both_verified
@@ -1096,7 +1095,7 @@ with tab_register:
             if student_id:
 
                 st.success(
-                    "🎉 Student account created successfully!"
+                    " Student account created successfully!"
                 )
 
                 st.info(
@@ -1140,7 +1139,7 @@ with tab_admin:
 
     st.markdown(
         '<div class="section-title">'
-        '🛡️ Admin Login'
+        ' Admin Login'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1152,18 +1151,18 @@ with tab_admin:
     with st.form("admin_login_form"):
 
         admin_email = st.text_input(
-            "📧 Admin Email",
+            " Admin Email",
             placeholder="admin@pragyanai.com"
         )
 
         admin_password = st.text_input(
-            "🔐 Admin Password",
+            " Admin Password",
             type="password",
             placeholder="Enter admin password"
         )
 
         admin_login_button = st.form_submit_button(
-            "🛡️ Admin Login",
+            " Admin Login",
             type="primary",
             use_container_width=True
         )
@@ -1201,7 +1200,7 @@ with tab_admin:
                 )
 
                 st.switch_page(
-                    "pages/2_🛡️_Admin_Dashboard.py"
+                    "pages/2_Admin_Dashboard.py"
                 )
 
             else:
