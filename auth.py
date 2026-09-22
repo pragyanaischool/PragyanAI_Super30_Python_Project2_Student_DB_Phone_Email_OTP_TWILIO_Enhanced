@@ -6,6 +6,7 @@
 import hashlib
 import hmac
 import os
+import secrets
 
 import streamlit as st
 
@@ -13,12 +14,35 @@ import streamlit as st
 # ============================================================
 # PASSWORD CONFIGURATION
 # ============================================================
+#
+# IMPORTANT:
+# These values MUST MATCH db.py.
+#
+# db.py currently uses:
+#
+#   HASH_ITERATIONS = 310_000
+#   SALT_LENGTH     = 32
+#   KEY_LENGTH      = 32
+#
+# Sample database password format:
+#
+#   <salt_hex>$<hash_hex>
+#
+# New registered student password format created here:
+#
+#   pbkdf2_sha256$310000$<salt_hex>$<hash_hex>
+#
+# verify_password() supports BOTH formats.
+#
+# ============================================================
 
 PASSWORD_HASH_ALGORITHM = "sha256"
 
-PASSWORD_ITERATIONS = 200_000
+PASSWORD_ITERATIONS = 310_000
 
-SALT_LENGTH = 16
+SALT_LENGTH = 32
+
+KEY_LENGTH = 32
 
 
 # ============================================================
@@ -101,16 +125,12 @@ def hash_password(password):
 
         PBKDF2-HMAC-SHA256
 
-    The resulting string contains:
+    New registered-student format:
 
-        algorithm
-        iterations
-        salt
-        password hash
+        pbkdf2_sha256$310000$<salt>$<hash>
 
-    Example format:
-
-        pbkdf2_sha256$200000$<salt>$<hash>
+    This function is used when creating a new
+    student account.
     """
 
     if password is None:
@@ -122,10 +142,24 @@ def hash_password(password):
     password = str(password)
 
     # --------------------------------------------------------
+    # Validate password
+    # --------------------------------------------------------
+
+    valid, message = validate_password(
+        password
+    )
+
+    if not valid:
+
+        raise ValueError(
+            message
+        )
+
+    # --------------------------------------------------------
     # Generate random salt
     # --------------------------------------------------------
 
-    salt = os.urandom(
+    salt = secrets.token_bytes(
         SALT_LENGTH
     )
 
@@ -137,7 +171,8 @@ def hash_password(password):
         PASSWORD_HASH_ALGORITHM,
         password.encode("utf-8"),
         salt,
-        PASSWORD_ITERATIONS
+        PASSWORD_ITERATIONS,
+        dklen=KEY_LENGTH
     )
 
     # --------------------------------------------------------
@@ -169,88 +204,208 @@ def verify_password(
     stored_password
 ):
     """
-    Verify a plain-text password against
-    a PBKDF2-HMAC-SHA256 stored password hash.
+    Verify a plain-text password against a stored
+    password hash.
 
-    Returns:
-        True
-        False
+    Supports BOTH formats:
+
+    --------------------------------------------------------
+    FORMAT 1 - Current registered users
+    --------------------------------------------------------
+
+    pbkdf2_sha256$310000$<salt>$<hash>
+
+
+    --------------------------------------------------------
+    FORMAT 2 - Existing sample users from db.py
+    --------------------------------------------------------
+
+    <salt>$<hash>
+
+    The second format uses:
+
+        SHA256
+        310000 iterations
+        32-byte salt
+        32-byte derived key
+
+    This compatibility is important because your
+    existing sample accounts were created by db.py.
     """
 
-    if not password or not stored_password:
+    if password is None:
+
+        return False
+
+    if not stored_password:
+
+        return False
+
+    password = str(password)
+
+    stored_password = str(
+        stored_password
+    ).strip()
+
+    if not password:
+
+        return False
+
+    if not stored_password:
 
         return False
 
     try:
 
+        # ====================================================
+        # FORMAT 1
+        #
+        # pbkdf2_sha256$310000$salt$hash
+        # ====================================================
+
         parts = stored_password.split("$")
 
-        # Expected:
-        # pbkdf2_sha256
-        # iterations
-        # salt
-        # hash
+        if len(parts) == 4:
 
-        if len(parts) != 4:
+            algorithm = parts[0]
 
-            return False
+            iterations_text = parts[1]
 
-        algorithm = parts[0]
+            salt_hex = parts[2]
 
-        iterations = int(parts[1])
+            stored_hash_hex = parts[3]
 
-        salt_hex = parts[2]
+            # ------------------------------------------------
+            # Validate algorithm
+            # ------------------------------------------------
 
-        stored_hash_hex = parts[3]
+            if algorithm != "pbkdf2_sha256":
 
+                return False
 
-        # ----------------------------------------------------
-        # Validate algorithm
-        # ----------------------------------------------------
+            # ------------------------------------------------
+            # Read iteration count from stored hash
+            # ------------------------------------------------
 
-        if algorithm != "pbkdf2_sha256":
+            iterations = int(
+                iterations_text
+            )
 
-            return False
+            if iterations <= 0:
 
+                return False
 
-        # ----------------------------------------------------
-        # Convert salt
-        # ----------------------------------------------------
+            # ------------------------------------------------
+            # Convert salt
+            # ------------------------------------------------
 
-        salt = bytes.fromhex(
-            salt_hex
-        )
+            salt = bytes.fromhex(
+                salt_hex
+            )
 
+            # ------------------------------------------------
+            # Convert stored hash
+            # ------------------------------------------------
 
-        # ----------------------------------------------------
-        # Generate hash for entered password
-        # ----------------------------------------------------
+            stored_hash = bytes.fromhex(
+                stored_hash_hex
+            )
 
-        calculated_hash = hashlib.pbkdf2_hmac(
-            "sha256",
-            str(password).encode("utf-8"),
-            salt,
-            iterations
-        )
+            # ------------------------------------------------
+            # Generate calculated hash
+            # ------------------------------------------------
 
+            calculated_hash = hashlib.pbkdf2_hmac(
+                PASSWORD_HASH_ALGORITHM,
+                password.encode("utf-8"),
+                salt,
+                iterations,
+                dklen=len(stored_hash)
+            )
 
-        # ----------------------------------------------------
-        # Convert stored hash
-        # ----------------------------------------------------
+            # ------------------------------------------------
+            # Secure comparison
+            # ------------------------------------------------
 
-        stored_hash = bytes.fromhex(
-            stored_hash_hex
-        )
+            return hmac.compare_digest(
+                calculated_hash,
+                stored_hash
+            )
 
+        # ====================================================
+        # FORMAT 2
+        #
+        # salt$hash
+        #
+        # Used by db.py sample accounts
+        # ====================================================
 
-        # ----------------------------------------------------
-        # Constant-time comparison
-        # ----------------------------------------------------
+        if len(parts) == 2:
 
-        return hmac.compare_digest(
-            calculated_hash,
-            stored_hash
-        )
+            salt_hex = parts[0]
+
+            stored_hash_hex = parts[1]
+
+            # ------------------------------------------------
+            # Convert salt
+            # ------------------------------------------------
+
+            salt = bytes.fromhex(
+                salt_hex
+            )
+
+            # ------------------------------------------------
+            # Convert stored hash
+            # ------------------------------------------------
+
+            stored_hash = bytes.fromhex(
+                stored_hash_hex
+            )
+
+            # ------------------------------------------------
+            # Validate expected sample configuration
+            #
+            # db.py:
+            #
+            #   HASH_ITERATIONS = 310_000
+            #   SALT_LENGTH = 32
+            #   KEY_LENGTH = 32
+            # ------------------------------------------------
+
+            if len(salt) != SALT_LENGTH:
+
+                return False
+
+            if len(stored_hash) != KEY_LENGTH:
+
+                return False
+
+            # ------------------------------------------------
+            # Generate calculated hash
+            # ------------------------------------------------
+
+            calculated_hash = hashlib.pbkdf2_hmac(
+                PASSWORD_HASH_ALGORITHM,
+                password.encode("utf-8"),
+                salt,
+                PASSWORD_ITERATIONS,
+                dklen=KEY_LENGTH
+            )
+
+            # ------------------------------------------------
+            # Secure comparison
+            # ------------------------------------------------
+
+            return hmac.compare_digest(
+                calculated_hash,
+                stored_hash
+            )
+
+        # ====================================================
+        # Unknown password format
+        # ====================================================
+
+        return False
 
     except (
         ValueError,
@@ -299,10 +454,13 @@ def student_login(
 
         success, message, student = student_login(
             email,
-            password,
-            connection
+            password
         )
     """
+
+    # ========================================================
+    # VALIDATE EMAIL
+    # ========================================================
 
     if not email:
 
@@ -312,6 +470,10 @@ def student_login(
             None
         )
 
+    # ========================================================
+    # VALIDATE PASSWORD
+    # ========================================================
+
     if not password:
 
         return (
@@ -320,23 +482,15 @@ def student_login(
             None
         )
 
-
     # ========================================================
-    # IMPORT DATABASE FUNCTION
+    # NORMALIZE EMAIL
     # ========================================================
 
-    try:
-
-        from db import get_student_by_email
-
-    except ImportError:
-
-        return (
-            False,
-            "Unable to load database module.",
-            None
-        )
-
+    email = (
+        str(email)
+        .strip()
+        .lower()
+    )
 
     # ========================================================
     # FIND STUDENT
@@ -344,18 +498,24 @@ def student_login(
 
     try:
 
+        from db import get_student_by_email
+
         student = get_student_by_email(
-            email.strip().lower()
+            email
         )
 
     except Exception as e:
 
-        return (
-            False,
-            f"Database error: {e}",
-            None
+        print(
+            "LOGIN DATABASE ERROR:",
+            e
         )
 
+        return (
+            False,
+            "Unable to access student database.",
+            None
+        )
 
     # ========================================================
     # STUDENT NOT FOUND
@@ -363,23 +523,67 @@ def student_login(
 
     if not student:
 
+        print(
+            "LOGIN DEBUG: Student not found:",
+            email
+        )
+
         return (
             False,
             "Invalid email or password.",
             None
         )
 
+    # ========================================================
+    # STUDENT FOUND
+    # ========================================================
+
+    print(
+        "LOGIN DEBUG: Student found:",
+        student.get("full_name"),
+        "|",
+        student.get("email")
+    )
+
+    # ========================================================
+    # GET STORED PASSWORD
+    # ========================================================
+
+    stored_password = student.get(
+        "password_hash"
+    )
+
+    if not stored_password:
+
+        print(
+            "LOGIN DEBUG: Password hash missing."
+        )
+
+        return (
+            False,
+            "Invalid email or password.",
+            None
+        )
 
     # ========================================================
     # VERIFY PASSWORD
     # ========================================================
 
-    stored_password = student["password_hash"]
-
-    if not verify_password(
+    password_valid = verify_password(
         password,
         stored_password
-    ):
+    )
+
+    print(
+        "LOGIN DEBUG: Password valid =",
+        password_valid
+    )
+
+    # ========================================================
+    # INVALID PASSWORD
+    # ========================================================
+
+    if not password_valid:
 
         return (
             False,
@@ -387,10 +591,14 @@ def student_login(
             None
         )
 
-
     # ========================================================
     # LOGIN SUCCESS
     # ========================================================
+
+    print(
+        "LOGIN DEBUG: Login successful for:",
+        email
+    )
 
     return (
         True,
@@ -430,7 +638,6 @@ def admin_login(
             "Please enter admin password."
         )
 
-
     # ========================================================
     # READ ADMIN CONFIGURATION
     # ========================================================
@@ -454,21 +661,25 @@ def admin_login(
             "ADMIN_EMAIL and ADMIN_PASSWORD."
         )
 
-
     # ========================================================
     # NORMALIZE EMAIL
     # ========================================================
 
-    email = email.strip().lower()
+    email = (
+        str(email)
+        .strip()
+        .lower()
+    )
 
-    configured_email = str(
-        configured_email
-    ).strip().lower()
+    configured_email = (
+        str(configured_email)
+        .strip()
+        .lower()
+    )
 
     configured_password = str(
         configured_password
     )
-
 
     # ========================================================
     # VERIFY ADMIN CREDENTIALS
@@ -484,14 +695,12 @@ def admin_login(
         configured_password
     )
 
-
     if not email_match or not password_match:
 
         return (
             False,
             "Invalid admin email or password."
         )
-
 
     # ========================================================
     # LOGIN SUCCESS
@@ -521,11 +730,9 @@ def initialize_session_state():
 
         st.session_state.logged_in = False
 
-
     if "user_type" not in st.session_state:
 
         st.session_state.user_type = None
-
 
     # ========================================================
     # STUDENT SESSION
@@ -535,16 +742,13 @@ def initialize_session_state():
 
         st.session_state.student_id = None
 
-
     if "student_email" not in st.session_state:
 
         st.session_state.student_email = None
 
-
     if "student_name" not in st.session_state:
 
         st.session_state.student_name = None
-
 
     # ========================================================
     # ADMIN SESSION
@@ -554,7 +758,6 @@ def initialize_session_state():
 
         st.session_state.admin_logged_in = False
 
-
     # ========================================================
     # EMAIL OTP
     # ========================================================
@@ -563,11 +766,9 @@ def initialize_session_state():
 
         st.session_state.email_otp = None
 
-
     if "email_otp_time" not in st.session_state:
 
         st.session_state.email_otp_time = None
-
 
     # ========================================================
     # PHONE OTP
@@ -577,7 +778,6 @@ def initialize_session_state():
 
         st.session_state.phone_otp_sent = False
 
-
     # ========================================================
     # REGISTRATION DATA
     # ========================================================
@@ -586,7 +786,6 @@ def initialize_session_state():
 
         st.session_state.registration_data = {}
 
-
     # ========================================================
     # VERIFICATION STATUS
     # ========================================================
@@ -594,7 +793,6 @@ def initialize_session_state():
     if "email_verified" not in st.session_state:
 
         st.session_state.email_verified = False
-
 
     if "phone_verified" not in st.session_state:
 
@@ -615,7 +813,6 @@ def set_student_session(student):
 
         return
 
-
     # ========================================================
     # GENERAL LOGIN
     # ========================================================
@@ -624,17 +821,21 @@ def set_student_session(student):
 
     st.session_state.user_type = "student"
 
-
     # ========================================================
     # STUDENT INFORMATION
     # ========================================================
 
-    st.session_state.student_id = student["id"]
+    st.session_state.student_id = (
+        student["id"]
+    )
 
-    st.session_state.student_email = student["email"]
+    st.session_state.student_email = (
+        student["email"]
+    )
 
-    st.session_state.student_name = student["full_name"]
-
+    st.session_state.student_name = (
+        student["full_name"]
+    )
 
     # ========================================================
     # ADMIN SESSION MUST BE FALSE
@@ -658,7 +859,6 @@ def set_admin_session():
     st.session_state.user_type = "admin"
 
     st.session_state.admin_logged_in = True
-
 
     # ========================================================
     # CLEAR STUDENT SESSION
@@ -784,7 +984,6 @@ def logout():
 
     st.session_state.user_type = None
 
-
     # ========================================================
     # STUDENT STATE
     # ========================================================
@@ -795,13 +994,11 @@ def logout():
 
     st.session_state.student_name = None
 
-
     # ========================================================
     # ADMIN STATE
     # ========================================================
 
     st.session_state.admin_logged_in = False
-
 
     # ========================================================
     # EMAIL OTP
@@ -811,13 +1008,11 @@ def logout():
 
     st.session_state.email_otp_time = None
 
-
     # ========================================================
     # PHONE OTP
     # ========================================================
 
     st.session_state.phone_otp_sent = False
-
 
     # ========================================================
     # REGISTRATION STATE
@@ -839,7 +1034,7 @@ def clear_registration_session():
     Clear only registration and OTP-related state.
 
     Useful after successful registration without
-    logging the user out of an existing session.
+    logging out of an existing session.
     """
 
     st.session_state.email_otp = None
