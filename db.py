@@ -23,6 +23,8 @@
 #    12. Get Students by Status
 #    13. Student Dashboard Counts
 #    14. Insert Sample Students
+#    15. Repair Sample Passwords
+#    16. Verify Password Hash
 #
 # ============================================================
 
@@ -31,6 +33,7 @@ import sqlite3
 from pathlib import Path
 import hashlib
 import secrets
+import hmac
 
 
 # ============================================================
@@ -43,7 +46,13 @@ DB_PATH = BASE_DIR / "students.db"
 
 
 # ============================================================
-# PASSWORD CONFIGURATION FOR SAMPLE USERS
+# PASSWORD CONFIGURATION
+# ============================================================
+#
+# IMPORTANT:
+# auth.py MUST use the same HASH_ITERATIONS,
+# SALT_LENGTH and hashing algorithm.
+#
 # ============================================================
 
 HASH_ITERATIONS = 310_000
@@ -80,8 +89,19 @@ def hash_sample_password(password):
     """
     Hash password using PBKDF2-HMAC-SHA256.
 
+    Format:
+
+        salt_hex$password_hash_hex
+
     Used for sample student accounts.
+
+    IMPORTANT:
+    The same HASH_ITERATIONS must be used by auth.py
+    when verifying the password.
     """
+
+    if not password:
+        raise ValueError("Password cannot be empty.")
 
     salt = secrets.token_bytes(
         SALT_LENGTH
@@ -103,62 +123,200 @@ def hash_sample_password(password):
 
 
 # ============================================================
-# INITIALIZE DATABASE
+# VERIFY PASSWORD HASH
 # ============================================================
+
+def verify_sample_password(password, stored_password):
+    """
+    Verify password against stored PBKDF2 password hash.
+
+    This function uses EXACTLY the same configuration
+    as hash_sample_password().
+
+    Returns:
+        True  -> password is correct
+        False -> password is incorrect
+    """
+
+    try:
+
+        if not password:
+            return False
+
+        if not stored_password:
+            return False
+
+        # ----------------------------------------------------
+        # Split stored password
+        # ----------------------------------------------------
+
+        parts = stored_password.split("$", 1)
+
+        if len(parts) != 2:
+            return False
+
+        salt_hex = parts[0]
+
+        hash_hex = parts[1]
+
+        # ----------------------------------------------------
+        # Convert HEX to bytes
+        # ----------------------------------------------------
+
+        salt = bytes.fromhex(
+            salt_hex
+        )
+
+        expected_hash = bytes.fromhex(
+            hash_hex
+        )
+
+        # ----------------------------------------------------
+        # Generate hash using SAME configuration
+        # ----------------------------------------------------
+
+        calculated_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt,
+            HASH_ITERATIONS,
+            dklen=KEY_LENGTH
+        )
+
+        # ----------------------------------------------------
+        # Secure comparison
+        # ----------------------------------------------------
+
+        return hmac.compare_digest(
+            calculated_hash,
+            expected_hash
+        )
+
+    except (
+        ValueError,
+        TypeError,
+        AttributeError
+    ):
+
+        return False
+
+
+# ============================================================
+# REPAIR SAMPLE STUDENT PASSWORDS
+# ============================================================
+
 def repair_sample_student_passwords(connection):
     """
-    Repair passwords for predefined demo/sample student accounts.
+    Repair passwords for predefined demo/sample
+    student accounts.
 
-    This does NOT delete students or modify their academic/profile data.
+    This does NOT delete students.
+
+    This does NOT modify:
+        - Name
+        - College
+        - Degree
+        - Branch
+        - CGPA
+        - Phone
+        - Verification
+        - Approval status
+        - Rejection reason
+
+    It only updates password_hash for predefined
+    sample accounts.
+
+    Sample password:
+
+        Student@123
     """
 
     sample_accounts = [
+
         "rahul.sharma@example.com",
+
         "priya.kumar@example.com",
+
         "arjun.rao@example.com",
+
         "sneha.reddy@example.com",
+
         "vivek.kumar@example.com",
+
     ]
 
     cursor = connection.cursor()
 
-    new_password_hash = hash_sample_password("Student@123")
-
     repaired = 0
+
+    # --------------------------------------------------------
+    # Generate ONE valid password hash
+    # --------------------------------------------------------
+
+    new_password_hash = hash_sample_password(
+        "Student@123"
+    )
+
+    # --------------------------------------------------------
+    # Update each sample account
+    # --------------------------------------------------------
 
     for email in sample_accounts:
 
         cursor.execute(
             """
-            SELECT id
-            FROM students
-            WHERE email = ?
+            UPDATE students
+
+            SET
+                password_hash = ?,
+                updated_at = CURRENT_TIMESTAMP
+
+            WHERE
+                LOWER(email) = LOWER(?)
             """,
-            (email,)
+
+            (
+                new_password_hash,
+                email
+            )
         )
 
-        student = cursor.fetchone()
+        if cursor.rowcount > 0:
 
-        if student:
-            cursor.execute(
-                """
-                UPDATE students
-                SET password_hash = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE email = ?
-                """,
-                (new_password_hash, email)
-            )
+            repaired += cursor.rowcount
 
-            repaired += 1
+    # --------------------------------------------------------
+    # Commit changes
+    # --------------------------------------------------------
 
     connection.commit()
 
-    print(f"Sample student passwords repaired: {repaired}")
+    print(
+        "Sample student passwords repaired: "
+        f"{repaired}"
+    )
 
     return repaired
-    
+
+
+# ============================================================
+# INITIALIZE DATABASE
+# ============================================================
+
 def init_db():
+    """
+    Initialize database.
+
+    Behaviour:
+
+    1. Create students table if it does not exist.
+    2. Check whether student data exists.
+    3. If database is empty:
+           Add sample students.
+    4. If students already exist:
+           Preserve existing data.
+    5. Repair predefined sample account passwords.
+    """
 
     connection = get_connection()
 
@@ -166,65 +324,144 @@ def init_db():
 
         cursor = connection.cursor()
 
-        cursor.execute("""
+        # ====================================================
+        # CREATE STUDENTS TABLE
+        # ====================================================
+
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS students (
+
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+
                 full_name TEXT NOT NULL,
+
                 college_name TEXT NOT NULL,
+
                 degree TEXT NOT NULL,
+
                 branch TEXT NOT NULL,
+
                 tenth_cgpa REAL,
+
                 twelfth_cgpa REAL,
+
                 be_cgpa REAL,
+
                 phone TEXT UNIQUE NOT NULL,
+
                 email TEXT UNIQUE NOT NULL,
+
                 password_hash TEXT NOT NULL,
+
                 email_verified INTEGER DEFAULT 0,
+
                 phone_verified INTEGER DEFAULT 0,
+
                 approval_status TEXT DEFAULT 'PENDING',
+
                 rejection_reason TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+                created_at
+                    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                updated_at
+                    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+            """
+        )
 
         connection.commit()
 
-        # --------------------------------------------------
-        # Check whether students already exist
-        # --------------------------------------------------
+        # ====================================================
+        # CHECK WHETHER STUDENTS ALREADY EXIST
+        # ====================================================
 
-        cursor.execute("SELECT COUNT(*) FROM students")
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            """
+        )
 
         result = cursor.fetchone()
 
-        student_count = int(result[0])
+        student_count = int(
+            result[0]
+        )
+
+        # ====================================================
+        # DATABASE EMPTY
+        # ====================================================
 
         if student_count == 0:
 
-            print("No student data found.")
-            print("Adding sample students...")
+            print(
+                "No student data found."
+            )
 
-            insert_sample_students(connection)
+            print(
+                "Adding sample students..."
+            )
 
-            print("Sample student data added successfully.")
+            inserted = insert_sample_students(
+                connection
+            )
+
+            print(
+                "Sample student data added "
+                f"successfully: {inserted}"
+            )
+
+        # ====================================================
+        # DATABASE ALREADY HAS DATA
+        # ====================================================
 
         else:
 
-            print(f"{student_count} student(s) already exist.")
+            print(
+                f"{student_count} student(s) "
+                "already exist."
+            )
 
-            print("Existing student data preserved.")
+            print(
+                "Existing student data preserved."
+            )
 
-        # --------------------------------------------------
-        # Repair predefined sample account passwords
-        # --------------------------------------------------
+        # ====================================================
+        # REPAIR SAMPLE PASSWORDS
+        # ====================================================
+        #
+        # This is intentionally executed even when
+        # students already exist.
+        #
+        # This fixes old sample accounts whose password
+        # hashes were generated using a different hashing
+        # configuration.
+        #
+        # ====================================================
 
-        repair_sample_student_passwords(connection)
+        repair_sample_student_passwords(
+            connection
+        )
+
+    except Exception as error:
+
+        connection.rollback()
+
+        print(
+            "Database initialization error:"
+        )
+
+        print(error)
+
+        raise
 
     finally:
 
         connection.close()
-        
+
+
 # ============================================================
 # CREATE STUDENT
 # ============================================================
@@ -253,57 +490,79 @@ def create_student(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        INSERT INTO students (
+        cursor = connection.cursor()
 
-            full_name,
-            college_name,
-            degree,
-            branch,
-            tenth_cgpa,
-            twelfth_cgpa,
-            be_cgpa,
-            phone,
-            email,
-            password_hash,
-            email_verified,
-            phone_verified,
-            approval_status
+        cursor.execute(
+            """
+            INSERT INTO students (
 
+                full_name,
+
+                college_name,
+
+                degree,
+
+                branch,
+
+                tenth_cgpa,
+
+                twelfth_cgpa,
+
+                be_cgpa,
+
+                phone,
+
+                email,
+
+                password_hash,
+
+                email_verified,
+
+                phone_verified,
+
+                approval_status
+
+            )
+
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, 'PENDING'
+            )
+            """,
+
+            (
+                full_name,
+                college_name,
+                degree,
+                branch,
+                tenth_cgpa,
+                twelfth_cgpa,
+                be_cgpa,
+                phone,
+                email,
+                password_hash,
+                email_verified,
+                phone_verified
+            )
         )
 
-        VALUES (
-            ?, ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, 'PENDING'
-        )
-        """,
+        student_id = cursor.lastrowid
 
-        (
-            full_name,
-            college_name,
-            degree,
-            branch,
-            tenth_cgpa,
-            twelfth_cgpa,
-            be_cgpa,
-            phone,
-            email,
-            password_hash,
-            email_verified,
-            phone_verified
-        )
-    )
+        connection.commit()
 
-    student_id = cursor.lastrowid
+        return student_id
 
-    connection.commit()
+    except Exception:
 
-    connection.close()
+        connection.rollback()
 
-    return student_id
+        raise
+
+    finally:
+
+        connection.close()
 
 
 # ============================================================
@@ -319,26 +578,33 @@ def get_student_by_id(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        SELECT *
-        FROM students
-        WHERE id = ?
-        """,
-        (student_id,)
-    )
+        cursor = connection.cursor()
 
-    student = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT *
+            FROM students
+            WHERE id = ?
+            """,
 
-    connection.close()
+            (
+                student_id,
+            )
+        )
 
-    if student:
+        student = cursor.fetchone()
 
-        return dict(student)
+        if student:
 
-    return None
+            return dict(student)
+
+        return None
+
+    finally:
+
+        connection.close()
 
 
 # ============================================================
@@ -350,30 +616,39 @@ def get_student_by_email(
 ):
     """
     Get student using email.
+
+    Email comparison is case-insensitive.
     """
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        SELECT *
-        FROM students
-        WHERE LOWER(email) = LOWER(?)
-        """,
-        (email.strip(),)
-    )
+        cursor = connection.cursor()
 
-    student = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT *
+            FROM students
+            WHERE LOWER(email) = LOWER(?)
+            """,
 
-    connection.close()
+            (
+                email.strip(),
+            )
+        )
 
-    if student:
+        student = cursor.fetchone()
 
-        return dict(student)
+        if student:
 
-    return None
+            return dict(student)
+
+        return None
+
+    finally:
+
+        connection.close()
 
 
 # ============================================================
@@ -389,26 +664,33 @@ def get_student_by_phone(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        SELECT *
-        FROM students
-        WHERE phone = ?
-        """,
-        (phone.strip(),)
-    )
+        cursor = connection.cursor()
 
-    student = cursor.fetchone()
+        cursor.execute(
+            """
+            SELECT *
+            FROM students
+            WHERE phone = ?
+            """,
 
-    connection.close()
+            (
+                phone.strip(),
+            )
+        )
 
-    if student:
+        student = cursor.fetchone()
 
-        return dict(student)
+        if student:
 
-    return None
+            return dict(student)
+
+        return None
+
+    finally:
+
+        connection.close()
 
 
 # ============================================================
@@ -429,58 +711,62 @@ def email_or_phone_exists(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    if exclude_id:
+        cursor = connection.cursor()
 
-        cursor.execute(
-            """
-            SELECT id
-            FROM students
+        if exclude_id:
 
-            WHERE
+            cursor.execute(
+                """
+                SELECT id
+                FROM students
+
+                WHERE
+                    (
+                        LOWER(email) = LOWER(?)
+                        OR phone = ?
+                    )
+
+                    AND id != ?
+
+                LIMIT 1
+                """,
+
                 (
+                    email.strip(),
+                    phone.strip(),
+                    exclude_id
+                )
+            )
+
+        else:
+
+            cursor.execute(
+                """
+                SELECT id
+                FROM students
+
+                WHERE
                     LOWER(email) = LOWER(?)
                     OR phone = ?
+
+                LIMIT 1
+                """,
+
+                (
+                    email.strip(),
+                    phone.strip()
                 )
-
-                AND id != ?
-
-            LIMIT 1
-            """,
-
-            (
-                email.strip(),
-                phone.strip(),
-                exclude_id
             )
-        )
 
-    else:
+        result = cursor.fetchone()
 
-        cursor.execute(
-            """
-            SELECT id
-            FROM students
+        return result is not None
 
-            WHERE
-                LOWER(email) = LOWER(?)
-                OR phone = ?
+    finally:
 
-            LIMIT 1
-            """,
-
-            (
-                email.strip(),
-                phone.strip()
-            )
-        )
-
-    result = cursor.fetchone()
-
-    connection.close()
-
-    return result is not None
+        connection.close()
 
 
 # ============================================================
@@ -505,54 +791,66 @@ def update_student_profile(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        UPDATE students
+        cursor = connection.cursor()
 
-        SET
+        cursor.execute(
+            """
+            UPDATE students
 
-            full_name = ?,
+            SET
 
-            college_name = ?,
+                full_name = ?,
 
-            degree = ?,
+                college_name = ?,
 
-            branch = ?,
+                degree = ?,
 
-            tenth_cgpa = ?,
+                branch = ?,
 
-            twelfth_cgpa = ?,
+                tenth_cgpa = ?,
 
-            be_cgpa = ?,
+                twelfth_cgpa = ?,
 
-            phone = ?,
+                be_cgpa = ?,
 
-            email = ?,
+                phone = ?,
 
-            updated_at = CURRENT_TIMESTAMP
+                email = ?,
 
-        WHERE id = ?
-        """,
+                updated_at = CURRENT_TIMESTAMP
 
-        (
-            full_name,
-            college_name,
-            degree,
-            branch,
-            tenth_cgpa,
-            twelfth_cgpa,
-            be_cgpa,
-            phone,
-            email,
-            student_id
+            WHERE id = ?
+            """,
+
+            (
+                full_name,
+                college_name,
+                degree,
+                branch,
+                tenth_cgpa,
+                twelfth_cgpa,
+                be_cgpa,
+                phone,
+                email,
+                student_id
+            )
         )
-    )
 
-    connection.commit()
+        connection.commit()
 
-    connection.close()
+        return cursor.rowcount > 0
+
+    except Exception:
+
+        connection.rollback()
+
+        raise
+
+    finally:
+
+        connection.close()
 
 
 # ============================================================
@@ -573,85 +871,95 @@ def update_verification_status(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        SELECT
-            email_verified,
-            phone_verified
+        cursor = connection.cursor()
 
-        FROM students
+        cursor.execute(
+            """
+            SELECT
+                email_verified,
+                phone_verified
 
-        WHERE id = ?
-        """,
+            FROM students
 
-        (student_id,)
-    )
+            WHERE id = ?
+            """,
 
-    student = cursor.fetchone()
+            (
+                student_id,
+            )
+        )
 
-    if not student:
+        student = cursor.fetchone()
+
+        if not student:
+
+            return False
+
+        # ----------------------------------------------------
+        # Preserve existing values
+        # ----------------------------------------------------
+
+        current_email_verified = (
+            student["email_verified"]
+        )
+
+        current_phone_verified = (
+            student["phone_verified"]
+        )
+
+        if email_verified is None:
+
+            email_verified = (
+                current_email_verified
+            )
+
+        if phone_verified is None:
+
+            phone_verified = (
+                current_phone_verified
+            )
+
+        # ----------------------------------------------------
+        # Update
+        # ----------------------------------------------------
+
+        cursor.execute(
+            """
+            UPDATE students
+
+            SET
+
+                email_verified = ?,
+
+                phone_verified = ?,
+
+                updated_at = CURRENT_TIMESTAMP
+
+            WHERE id = ?
+            """,
+
+            (
+                int(email_verified),
+                int(phone_verified),
+                student_id
+            )
+        )
+
+        connection.commit()
+
+        return True
+
+    except Exception:
+
+        connection.rollback()
+
+        raise
+
+    finally:
 
         connection.close()
-
-        return False
-
-    # --------------------------------------------------------
-    # Preserve existing values when None
-    # --------------------------------------------------------
-
-    current_email_verified = (
-        student["email_verified"]
-    )
-
-    current_phone_verified = (
-        student["phone_verified"]
-    )
-
-    if email_verified is None:
-
-        email_verified = (
-            current_email_verified
-        )
-
-    if phone_verified is None:
-
-        phone_verified = (
-            current_phone_verified
-        )
-
-    # --------------------------------------------------------
-    # Update
-    # --------------------------------------------------------
-
-    cursor.execute(
-        """
-        UPDATE students
-
-        SET
-
-            email_verified = ?,
-
-            phone_verified = ?,
-
-            updated_at = CURRENT_TIMESTAMP
-
-        WHERE id = ?
-        """,
-
-        (
-            int(email_verified),
-            int(phone_verified),
-            student_id
-        )
-    )
-
-    connection.commit()
-
-    connection.close()
-
-    return True
 
 
 # ============================================================
@@ -689,33 +997,45 @@ def update_approval_status(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        UPDATE students
+        cursor = connection.cursor()
 
-        SET
+        cursor.execute(
+            """
+            UPDATE students
 
-            approval_status = ?,
+            SET
 
-            rejection_reason = ?,
+                approval_status = ?,
 
-            updated_at = CURRENT_TIMESTAMP
+                rejection_reason = ?,
 
-        WHERE id = ?
-        """,
+                updated_at = CURRENT_TIMESTAMP
 
-        (
-            status,
-            rejection_reason,
-            student_id
+            WHERE id = ?
+            """,
+
+            (
+                status,
+                rejection_reason,
+                student_id
+            )
         )
-    )
 
-    connection.commit()
+        connection.commit()
 
-    connection.close()
+        return cursor.rowcount > 0
+
+    except Exception:
+
+        connection.rollback()
+
+        raise
+
+    finally:
+
+        connection.close()
 
 
 # ============================================================
@@ -729,26 +1049,28 @@ def get_all_students():
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        SELECT *
+        cursor = connection.cursor()
 
-        FROM students
+        cursor.execute(
+            """
+            SELECT *
+            FROM students
+            ORDER BY created_at DESC
+            """
+        )
 
-        ORDER BY created_at DESC
-        """
-    )
+        rows = cursor.fetchall()
 
-    rows = cursor.fetchall()
+        return [
+            dict(row)
+            for row in rows
+        ]
 
-    connection.close()
+    finally:
 
-    return [
-        dict(row)
-        for row in rows
-    ]
+        connection.close()
 
 
 # ============================================================
@@ -764,32 +1086,35 @@ def get_students_by_status(
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        SELECT *
+        cursor = connection.cursor()
 
-        FROM students
+        cursor.execute(
+            """
+            SELECT *
+            FROM students
 
-        WHERE approval_status = ?
+            WHERE approval_status = ?
 
-        ORDER BY created_at DESC
-        """,
+            ORDER BY created_at DESC
+            """,
 
-        (
-            status.upper(),
+            (
+                status.upper(),
+            )
         )
-    )
 
-    rows = cursor.fetchall()
+        rows = cursor.fetchall()
 
-    connection.close()
+        return [
+            dict(row)
+            for row in rows
+        ]
 
-    return [
-        dict(row)
-        for row in rows
-    ]
+    finally:
+
+        connection.close()
 
 
 # ============================================================
@@ -803,118 +1128,112 @@ def student_counts():
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    # --------------------------------------------------------
-    # Total
-    # --------------------------------------------------------
+        cursor = connection.cursor()
 
-    cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM students
-        """
-    )
+        # ----------------------------------------------------
+        # Total
+        # ----------------------------------------------------
 
-    total = cursor.fetchone()[0]
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            """
+        )
 
-    # --------------------------------------------------------
-    # Approved
-    # --------------------------------------------------------
+        total = cursor.fetchone()[0]
 
-    cursor.execute(
-        """
-        SELECT COUNT(*)
+        # ----------------------------------------------------
+        # Approved
+        # ----------------------------------------------------
 
-        FROM students
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            WHERE approval_status = 'APPROVED'
+            """
+        )
 
-        WHERE approval_status = 'APPROVED'
-        """
-    )
+        approved = cursor.fetchone()[0]
 
-    approved = cursor.fetchone()[0]
+        # ----------------------------------------------------
+        # Pending
+        # ----------------------------------------------------
 
-    # --------------------------------------------------------
-    # Pending
-    # --------------------------------------------------------
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            WHERE approval_status = 'PENDING'
+            """
+        )
 
-    cursor.execute(
-        """
-        SELECT COUNT(*)
+        pending = cursor.fetchone()[0]
 
-        FROM students
+        # ----------------------------------------------------
+        # Rejected
+        # ----------------------------------------------------
 
-        WHERE approval_status = 'PENDING'
-        """
-    )
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            WHERE approval_status = 'REJECTED'
+            """
+        )
 
-    pending = cursor.fetchone()[0]
+        rejected = cursor.fetchone()[0]
 
-    # --------------------------------------------------------
-    # Rejected
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # Email Verified
+        # ----------------------------------------------------
 
-    cursor.execute(
-        """
-        SELECT COUNT(*)
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            WHERE email_verified = 1
+            """
+        )
 
-        FROM students
+        email_verified = cursor.fetchone()[0]
 
-        WHERE approval_status = 'REJECTED'
-        """
-    )
+        # ----------------------------------------------------
+        # Phone Verified
+        # ----------------------------------------------------
 
-    rejected = cursor.fetchone()[0]
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM students
+            WHERE phone_verified = 1
+            """
+        )
 
-    # --------------------------------------------------------
-    # Email Verified
-    # --------------------------------------------------------
+        phone_verified = cursor.fetchone()[0]
 
-    cursor.execute(
-        """
-        SELECT COUNT(*)
+        return {
 
-        FROM students
+            "total": total,
 
-        WHERE email_verified = 1
-        """
-    )
+            "approved": approved,
 
-    email_verified = cursor.fetchone()[0]
+            "pending": pending,
 
-    # --------------------------------------------------------
-    # Phone Verified
-    # --------------------------------------------------------
+            "rejected": rejected,
 
-    cursor.execute(
-        """
-        SELECT COUNT(*)
+            "email_verified": email_verified,
 
-        FROM students
+            "phone_verified": phone_verified
 
-        WHERE phone_verified = 1
-        """
-    )
+        }
 
-    phone_verified = cursor.fetchone()[0]
+    finally:
 
-    connection.close()
-
-    return {
-
-        "total": total,
-
-        "approved": approved,
-
-        "pending": pending,
-
-        "rejected": rejected,
-
-        "email_verified": email_verified,
-
-        "phone_verified": phone_verified
-
-    }
+        connection.close()
 
 
 # ============================================================
@@ -923,122 +1242,294 @@ def student_counts():
 
 def insert_sample_students(connection):
     """
-    Insert sample students only when they do not already exist.
+    Insert sample students only when they do not
+    already exist.
 
-    Existing student records are never deleted or modified.
+    Existing student records are never deleted
+    or modified.
+
+    Returns:
+        Number of students inserted.
     """
 
     sample_students = [
+
+        # ====================================================
+        # RAHUL
+        # ====================================================
+
         {
-            "full_name": "Rahul Sharma",
-            "college_name": "East West Institute of Technology",
-            "degree": "B.E",
-            "branch": "CSE",
-            "tenth_cgpa": 9.2,
-            "twelfth_cgpa": 9.0,
-            "be_cgpa": 8.7,
-            "phone": "+919900000001",
-            "email": "rahul.sharma@example.com",
-            "password": "Student@123",
-            "email_verified": 1,
-            "phone_verified": 1,
-            "approval_status": "APPROVED",
-            "rejection_reason": None,
+            "full_name":
+                "Rahul Sharma",
+
+            "college_name":
+                "East West Institute of Technology",
+
+            "degree":
+                "B.E",
+
+            "branch":
+                "CSE",
+
+            "tenth_cgpa":
+                9.2,
+
+            "twelfth_cgpa":
+                9.0,
+
+            "be_cgpa":
+                8.7,
+
+            "phone":
+                "+919900000001",
+
+            "email":
+                "rahul.sharma@example.com",
+
+            "password":
+                "Student@123",
+
+            "email_verified":
+                1,
+
+            "phone_verified":
+                1,
+
+            "approval_status":
+                "APPROVED",
+
+            "rejection_reason":
+                None,
         },
+
+        # ====================================================
+        # PRIYA
+        # ====================================================
+
         {
-            "full_name": "Priya Kumar",
-            "college_name": "Cambridge Institute of Technology",
-            "degree": "B.E",
-            "branch": "ISE",
-            "tenth_cgpa": 9.5,
-            "twelfth_cgpa": 9.2,
-            "be_cgpa": 8.9,
-            "phone": "+919900000002",
-            "email": "priya.kumar@example.com",
-            "password": "Student@123",
-            "email_verified": 1,
-            "phone_verified": 1,
-            "approval_status": "PENDING",
-            "rejection_reason": None,
+            "full_name":
+                "Priya Kumar",
+
+            "college_name":
+                "Cambridge Institute of Technology",
+
+            "degree":
+                "B.E",
+
+            "branch":
+                "ISE",
+
+            "tenth_cgpa":
+                9.5,
+
+            "twelfth_cgpa":
+                9.2,
+
+            "be_cgpa":
+                8.9,
+
+            "phone":
+                "+919900000002",
+
+            "email":
+                "priya.kumar@example.com",
+
+            "password":
+                "Student@123",
+
+            "email_verified":
+                1,
+
+            "phone_verified":
+                1,
+
+            "approval_status":
+                "PENDING",
+
+            "rejection_reason":
+                None,
         },
+
+        # ====================================================
+        # ARJUN
+        # ====================================================
+
         {
-            "full_name": "Arjun Rao",
-            "college_name": "Sapthagiri College of Engineering",
-            "degree": "B.E",
-            "branch": "AI&DS",
-            "tenth_cgpa": 8.8,
-            "twelfth_cgpa": 8.6,
-            "be_cgpa": 7.9,
-            "phone": "+919900000003",
-            "email": "arjun.rao@example.com",
-            "password": "Student@123",
-            "email_verified": 1,
-            "phone_verified": 1,
-            "approval_status": "REJECTED",
-            "rejection_reason": "Academic details require review.",
+            "full_name":
+                "Arjun Rao",
+
+            "college_name":
+                "Sapthagiri College of Engineering",
+
+            "degree":
+                "B.E",
+
+            "branch":
+                "AI&DS",
+
+            "tenth_cgpa":
+                8.8,
+
+            "twelfth_cgpa":
+                8.6,
+
+            "be_cgpa":
+                7.9,
+
+            "phone":
+                "+919900000003",
+
+            "email":
+                "arjun.rao@example.com",
+
+            "password":
+                "Student@123",
+
+            "email_verified":
+                1,
+
+            "phone_verified":
+                1,
+
+            "approval_status":
+                "REJECTED",
+
+            "rejection_reason":
+                "Academic details require review.",
         },
+
+        # ====================================================
+        # SNEHA
+        # ====================================================
+
         {
-            "full_name": "Sneha Reddy",
-            "college_name": "Atria Institute of Technology",
-            "degree": "B.E",
-            "branch": "ECE",
-            "tenth_cgpa": 9.1,
-            "twelfth_cgpa": 8.9,
-            "be_cgpa": 8.3,
-            "phone": "+919900000004",
-            "email": "sneha.reddy@example.com",
-            "password": "Student@123",
-            "email_verified": 1,
-            "phone_verified": 0,
-            "approval_status": "PENDING",
-            "rejection_reason": None,
+            "full_name":
+                "Sneha Reddy",
+
+            "college_name":
+                "Atria Institute of Technology",
+
+            "degree":
+                "B.E",
+
+            "branch":
+                "ECE",
+
+            "tenth_cgpa":
+                9.1,
+
+            "twelfth_cgpa":
+                8.9,
+
+            "be_cgpa":
+                8.3,
+
+            "phone":
+                "+919900000004",
+
+            "email":
+                "sneha.reddy@example.com",
+
+            "password":
+                "Student@123",
+
+            "email_verified":
+                1,
+
+            "phone_verified":
+                0,
+
+            "approval_status":
+                "PENDING",
+
+            "rejection_reason":
+                None,
         },
+
+        # ====================================================
+        # VIVEK
+        # ====================================================
+
         {
-            "full_name": "Vivek Kumar",
-            "college_name": "AMC Engineering College",
-            "degree": "B.E",
-            "branch": "ISE",
-            "tenth_cgpa": 8.7,
-            "twelfth_cgpa": 8.5,
-            "be_cgpa": 8.1,
-            "phone": "+919900000005",
-            "email": "vivek.kumar@example.com",
-            "password": "Student@123",
-            "email_verified": 0,
-            "phone_verified": 1,
-            "approval_status": "PENDING",
-            "rejection_reason": None,
+            "full_name":
+                "Vivek Kumar",
+
+            "college_name":
+                "AMC Engineering College",
+
+            "degree":
+                "B.E",
+
+            "branch":
+                "ISE",
+
+            "tenth_cgpa":
+                8.7,
+
+            "twelfth_cgpa":
+                8.5,
+
+            "be_cgpa":
+                8.1,
+
+            "phone":
+                "+919900000005",
+
+            "email":
+                "vivek.kumar@example.com",
+
+            "password":
+                "Student@123",
+
+            "email_verified":
+                0,
+
+            "phone_verified":
+                1,
+
+            "approval_status":
+                "PENDING",
+
+            "rejection_reason":
+                None,
         },
+
     ]
 
     cursor = connection.cursor()
 
     inserted = 0
 
+    # ========================================================
+    # INSERT EACH STUDENT
+    # ========================================================
+
     for student in sample_students:
 
-        # ====================================================
+        # ----------------------------------------------------
         # CHECK EMAIL
-        # ====================================================
+        # ----------------------------------------------------
 
         cursor.execute(
             """
             SELECT id
             FROM students
-            WHERE email = ?
+            WHERE LOWER(email) = LOWER(?)
             LIMIT 1
             """,
-            (student["email"],)
+
+            (
+                student["email"],
+            )
         )
 
         if cursor.fetchone():
 
             continue
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # CHECK PHONE
-        # ====================================================
+        # ----------------------------------------------------
 
         cursor.execute(
             """
@@ -1047,50 +1538,68 @@ def insert_sample_students(connection):
             WHERE phone = ?
             LIMIT 1
             """,
-            (student["phone"],)
+
+            (
+                student["phone"],
+            )
         )
 
         if cursor.fetchone():
 
             continue
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # HASH PASSWORD
-        # ====================================================
+        # ----------------------------------------------------
 
         password_hash = hash_sample_password(
             student["password"]
         )
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # INSERT
-        # ====================================================
+        # ----------------------------------------------------
 
         cursor.execute(
             """
             INSERT INTO students (
+
                 full_name,
+
                 college_name,
+
                 degree,
+
                 branch,
+
                 tenth_cgpa,
+
                 twelfth_cgpa,
+
                 be_cgpa,
+
                 phone,
+
                 email,
+
                 password_hash,
+
                 email_verified,
+
                 phone_verified,
+
                 approval_status,
+
                 rejection_reason
+
             )
+
             VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?
             )
             """,
+
             (
                 student["full_name"],
                 student["college_name"],
@@ -1111,11 +1620,78 @@ def insert_sample_students(connection):
 
         inserted += 1
 
+    # ========================================================
+    # COMMIT
+    # ========================================================
 
     connection.commit()
 
     return inserted
-    
+
+
+# ============================================================
+# DATABASE LOGIN DIAGNOSTIC
+# ============================================================
+
+def test_sample_login(
+    email="rahul.sharma@example.com",
+    password="Student@123"
+):
+    """
+    Development/testing helper.
+
+    Tests the database record and password hash
+    without changing any data.
+
+    Returns:
+
+        {
+            "student_found": True/False,
+            "password_valid": True/False,
+            "email_verified": True/False,
+            "phone_verified": True/False,
+            "approval_status": "...",
+        }
+    """
+
+    student = get_student_by_email(
+        email
+    )
+
+    if not student:
+
+        return {
+            "student_found": False,
+            "password_valid": False,
+            "email_verified": False,
+            "phone_verified": False,
+            "approval_status": None,
+        }
+
+    password_valid = verify_sample_password(
+        password,
+        student["password_hash"]
+    )
+
+    return {
+
+        "student_found": True,
+
+        "password_valid":
+            password_valid,
+
+        "email_verified":
+            bool(student["email_verified"]),
+
+        "phone_verified":
+            bool(student["phone_verified"]),
+
+        "approval_status":
+            student["approval_status"],
+
+    }
+
+
 # ============================================================
 # RESET DATABASE - DEVELOPMENT ONLY
 # ============================================================
@@ -1131,19 +1707,24 @@ def reset_database():
 
     connection = get_connection()
 
-    cursor = connection.cursor()
+    try:
 
-    cursor.execute(
-        """
-        DROP TABLE IF EXISTS students
-        """
-    )
+        cursor = connection.cursor()
 
-    connection.commit()
+        cursor.execute(
+            """
+            DROP TABLE IF EXISTS students
+            """
+        )
 
-    connection.close()
+        connection.commit()
+
+    finally:
+
+        connection.close()
 
     init_db()
+
 
 # ============================================================
 # END OF db.py
