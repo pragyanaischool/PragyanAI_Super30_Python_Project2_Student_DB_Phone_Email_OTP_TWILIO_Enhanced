@@ -46,11 +46,11 @@ initialize_session_state()
 if not is_student_logged_in():
 
     st.warning(
-        "🔐 Please login as a student to access the dashboard."
+        " Please login as a student to access the dashboard."
     )
 
     if st.button(
-        "🏠 Go to Login",
+        " Go to Login",
         type="primary"
     ):
         st.switch_page("app.py")
@@ -75,7 +75,7 @@ if not student_id:
     logout()
 
     if st.button(
-        "🏠 Return to Login"
+        " Return to Login"
     ):
         st.switch_page("app.py")
 
@@ -98,7 +98,7 @@ if not student:
     logout()
 
     if st.button(
-        "🏠 Return to Login"
+        " Return to Login"
     ):
         st.switch_page("app.py")
 
@@ -175,11 +175,13 @@ st.markdown(
 
 with st.sidebar:
 
-    st.markdown("## 🎓 PragyanAI")
+    st.image("PragyanAI_Transperent.png")
+
+    st.markdown("##  PragyanAI")
 
     st.markdown("---")
 
-    st.success("🎓 Student Portal")
+    st.success(" Student Portal")
 
     st.markdown(
         f"**Student ID:** {student['id']}"
@@ -200,14 +202,14 @@ with st.sidebar:
     st.markdown("---")
 
     if st.button(
-        "🏠 Home",
+        " Home",
         use_container_width=True
     ):
 
         st.switch_page("app.py")
 
     if st.button(
-        "🚪 Logout",
+        " Logout",
         use_container_width=True
     ):
 
@@ -222,7 +224,7 @@ with st.sidebar:
 
 st.markdown(
     '<div class="dashboard-title">'
-    '🎓 Student Dashboard'
+    ' Student Dashboard'
     '</div>',
     unsafe_allow_html=True
 )
@@ -263,7 +265,7 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
 
     st.metric(
-        "🎓 Student ID",
+        " Student ID",
         student["id"]
     )
 
@@ -271,7 +273,7 @@ with col1:
 with col2:
 
     st.metric(
-        "📧 Email",
+        " Email",
         "Verified"
         if email_verified
         else "Not Verified"
@@ -281,7 +283,7 @@ with col2:
 with col3:
 
     st.metric(
-        "📱 Phone",
+        " Phone",
         "Verified"
         if phone_verified
         else "Not Verified"
@@ -291,7 +293,7 @@ with col3:
 with col4:
 
     st.metric(
-        "🛡️ Approval",
+        " Approval",
         approval_status
     )
 
@@ -305,10 +307,10 @@ st.markdown("---")
 
 tab_profile, tab_edit, tab_verification, tab_approval = st.tabs(
     [
-        "👤 My Profile",
-        "✏️ Edit Profile",
-        "🔐 Verification",
-        "📋 Approval Status",
+        "1. My Profile",
+        "2. Edit Profile",
+        "3. Verification",
+        "4. Approval Status",
     ]
 )
 
@@ -321,7 +323,7 @@ with tab_profile:
 
     st.markdown(
         '<div class="section-title">'
-        '👤 My Profile'
+        ' My Profile'
         '</div>',
         unsafe_allow_html=True
     )
@@ -330,7 +332,7 @@ with tab_profile:
     # Personal Information
     # --------------------------------------------------------
 
-    st.markdown("### 👤 Personal Information")
+    st.markdown("###  Personal Information")
 
     col1, col2 = st.columns(2)
 
@@ -399,7 +401,7 @@ with tab_profile:
     # Academic Information
     # --------------------------------------------------------
 
-    st.markdown("### 📚 Academic Information")
+    st.markdown("###  Academic Information")
 
     academic_col1, academic_col2, academic_col3 = st.columns(3)
 
@@ -439,7 +441,7 @@ with tab_edit:
 
     st.markdown(
         '<div class="section-title">'
-        '✏️ Edit Profile'
+        ' Edit Profile'
         '</div>',
         unsafe_allow_html=True
     )
@@ -456,7 +458,7 @@ with tab_edit:
 
     with st.form("edit_student_profile_form"):
 
-        st.markdown("### 👤 Personal Information")
+        st.markdown("###  Personal Information")
 
         col1, col2 = st.columns(2)
 
@@ -494,7 +496,7 @@ with tab_edit:
                 value=student["phone"] or "",
             )
 
-        st.markdown("### 📚 Academic Information")
+        st.markdown("###  Academic Information")
 
         academic_col1, academic_col2, academic_col3 = st.columns(3)
 
@@ -537,7 +539,7 @@ with tab_edit:
         st.markdown("---")
 
         update_button = st.form_submit_button(
-            "💾 Save Profile Changes",
+            " Save Profile Changes",
             type="primary",
             use_container_width=True
         )
@@ -695,14 +697,14 @@ with tab_edit:
                 if email_changed:
 
                     st.warning(
-                        "📧 Your email address was changed. "
+                        " Your email address was changed. "
                         "Email verification is required again."
                     )
 
                 if phone_changed:
 
                     st.warning(
-                        "📱 Your phone number was changed. "
+                        " Your phone number was changed. "
                         "Phone verification is required again."
                     )
 
@@ -730,7 +732,7 @@ with tab_verification:
 
     st.markdown(
         '<div class="section-title">'
-        '🔐 Verification Status'
+        ' Verification Status'
         '</div>',
         unsafe_allow_html=True
     )
@@ -747,7 +749,7 @@ with tab_verification:
 
     with col1:
 
-        st.markdown("### 📧 Email Verification")
+        st.markdown("###  Email Verification")
 
         st.write(
             f"**Email:** {student['email']}"
@@ -777,7 +779,7 @@ with tab_verification:
 
     with col2:
 
-        st.markdown("### 📱 Phone Verification")
+        st.markdown("###  Phone Verification")
 
         st.write(
             f"**Phone:** {student['phone']}"
@@ -810,7 +812,7 @@ with tab_verification:
     if email_verified and phone_verified:
 
         st.success(
-            "🎉 Your Email and Phone are both verified."
+            " Your Email and Phone are both verified."
         )
 
     elif email_verified:
@@ -842,7 +844,7 @@ with tab_approval:
 
     st.markdown(
         '<div class="section-title">'
-        '📋 Approval Status'
+        ' Approval Status'
         '</div>',
         unsafe_allow_html=True
     )
@@ -876,7 +878,7 @@ with tab_approval:
         st.markdown(
             """
             <div class="status-pending">
-                <h3>⏳ Application Pending</h3>
+                <h3> Application Pending</h3>
                 <p>
                 Your application has been submitted and is
                 waiting for administrator approval.
@@ -916,7 +918,7 @@ with tab_approval:
         if rejection_reason:
 
             st.markdown(
-                "### 📝 Rejection Reason"
+                "###  Rejection Reason"
             )
 
             st.error(
@@ -948,7 +950,7 @@ with tab_approval:
     st.markdown("---")
 
     st.markdown(
-        "### 🔐 Verification Summary"
+        "### Verification Summary"
     )
 
     verification_col1, verification_col2 = st.columns(2)
@@ -958,13 +960,13 @@ with tab_approval:
         if email_verified:
 
             st.success(
-                "📧 Email: Verified"
+                " Email: Verified"
             )
 
         else:
 
             st.error(
-                "📧 Email: Not Verified"
+                " Email: Not Verified"
             )
 
     with verification_col2:
@@ -972,13 +974,13 @@ with tab_approval:
         if phone_verified:
 
             st.success(
-                "📱 Phone: Verified"
+                " Phone: Verified"
             )
 
         else:
 
             st.error(
-                "📱 Phone: Not Verified"
+                " Phone: Not Verified"
             )
 
 
